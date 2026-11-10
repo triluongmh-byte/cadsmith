@@ -11,7 +11,8 @@ A shape is a ``cq.Workplane``, ``cq.Shape`` or ``cq.Assembly``. Optional module-
 
 - ``FITS``: a list of :class:`cadsmith.Fit`, or ``(a, b)`` / ``(a, b, min_clearance)`` tuples;
 - ``ORIENT``: ``{name: "-Z"}``, the face that goes on the bed;
-- ``QUANTITY``: ``{name: 2}``, copies to print.
+- ``QUANTITY``: ``{name: 2}``, copies to print;
+- ``BOUGHT``: a collection of part names that are bought, not printed.
 """
 
 from __future__ import annotations
@@ -89,7 +90,8 @@ def load_model(path: str | Path) -> Model:
     geometry = _geometry(module, path.stem)
     orient = getattr(module, "ORIENT", {})
     quantity = getattr(module, "QUANTITY", {})
-    for setting, values in (("ORIENT", orient), ("QUANTITY", quantity)):
+    bought = set(getattr(module, "BOUGHT", ()))
+    for setting, values in (("ORIENT", orient), ("QUANTITY", quantity), ("BOUGHT", bought)):
         unknown = sorted(set(values) - set(geometry))
         if unknown:
             raise ModelError(f"{setting} names unknown parts {unknown}")
@@ -101,5 +103,8 @@ def load_model(path: str | Path) -> Model:
         count = quantity.get(name, 1)
         if not isinstance(count, int) or count < 1:
             raise ModelError(f"{name}: QUANTITY must be a positive integer, got {count!r}")
-        parts.append(Part(name=str(name), shape=to_shape(value, str(name)), quantity=count, down=down))
+        parts.append(Part(name=str(name), shape=to_shape(value, str(name)), quantity=count, down=down,
+                          bought=str(name) in bought))
+    if len(bought) == len(parts):
+        raise ModelError("every part is BOUGHT, so there is nothing to print")
     return Model(name=path.stem, parts=parts, fits=[_fit(item) for item in getattr(module, "FITS", [])])

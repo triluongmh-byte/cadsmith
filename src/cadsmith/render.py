@@ -15,6 +15,8 @@ from cadsmith.mesh import Mesh  # noqa: E402
 from cadsmith.plates import Plate, Printer  # noqa: E402
 
 COLORS = ("#e8743b", "#3b8ea5", "#7a9e3b", "#b0589a")
+BOUGHT_COLOR = "#8a93a3"
+PREVIEW_VIEWS = (("Iso", 24, -58), ("Front (from -Y)", 0, -90), ("Right (from +X)", 0, 0), ("Top (from +Z)", 89.9, -90))
 _LIGHT = np.array([0.35, -0.55, 0.75])
 _SUPERSAMPLE = 2
 _NORMAL_EDGE = 0.25
@@ -79,15 +81,13 @@ def _outline(colour: np.ndarray, normal: np.ndarray, depth: np.ndarray, part: np
     return result
 
 
-def render_meshes(meshes: list[Mesh], path: str | Path, *, elev: float = 24, azim: float = -58, size: int = 900) -> Path:
-    """Draw meshes together in one orthographic view, each in its own colour."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _draw(meshes: list[Mesh], elev: float, azim: float, size: int, bought: tuple[int, ...] = ()) -> np.ndarray:
+    """One orthographic view of the meshes as an RGB image."""
     view = _camera(elev, azim)
     light = _LIGHT / np.linalg.norm(_LIGHT)
     triangles, shades, normals, ids = [], [], [], []
     for index, mesh in enumerate(meshes):
-        base = np.array(matplotlib.colors.to_rgb(COLORS[index % len(COLORS)]))
+        base = np.array(matplotlib.colors.to_rgb(BOUGHT_COLOR if index in bought else COLORS[index % len(COLORS)]))
         face_normals = mesh.normals
         brightness = 0.5 + 0.5 * np.clip(face_normals @ light, 0, 1)
         triangles.append(mesh.triangles @ view.T)
@@ -106,7 +106,29 @@ def render_meshes(meshes: list[Mesh], path: str | Path, *, elev: float = 24, azi
     colour, normal, depth, part = _rasterize(screen, np.concatenate(shades), np.concatenate(normals), np.concatenate(ids), pixels)
     image = _outline(colour, normal, depth, part, pitch)
     image = image.reshape(size, _SUPERSAMPLE, size, _SUPERSAMPLE, 3).mean(axis=(1, 3))
-    plt.imsave(path, np.clip(image, 0, 1))
+    return np.clip(image, 0, 1)
+
+
+def render_meshes(meshes: list[Mesh], path: str | Path, *, elev: float = 24, azim: float = -58, size: int = 900) -> Path:
+    """Draw meshes together in one orthographic view, each in its own colour."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    plt.imsave(path, _draw(meshes, elev, azim, size))
+    return path
+
+
+def render_preview(meshes: list[Mesh], path: str | Path, *, bought: tuple[int, ...] = (), size: int = 520) -> Path:
+    """A labelled sheet of four views, for reviewing a model at a glance. Bought parts are grey."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure, axes = plt.subplots(2, 2, figsize=(2 * size / 100, 2 * size / 100 + 0.5), dpi=100, facecolor="white")
+    for axis, (title, elev, azim) in zip(axes.flat, PREVIEW_VIEWS):
+        axis.imshow(_draw(meshes, elev, azim, size, bought))
+        axis.set_title(title, fontsize=12)
+        axis.axis("off")
+    figure.tight_layout()
+    figure.savefig(path)
+    plt.close(figure)
     return path
 
 

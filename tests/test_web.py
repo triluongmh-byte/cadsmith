@@ -10,6 +10,7 @@ import urllib.request
 import pytest
 
 from cadsmith.web import agent as agent_module
+from cadsmith.web import pipeline as pipeline_module
 from cadsmith.web import server as server_module
 from cadsmith.web.agent import ClaudeAgent
 from cadsmith.web.pipeline import build_version
@@ -153,7 +154,7 @@ def test_chat_builds_a_new_version(running):
     studio, url = running()
     assert post(f"{url}/api/chat", {"message": "make a block"})[0] == 202
     wait_idle(studio)
-    assert kinds(studio) == ["user", "tool", "text", "build", "done"]
+    assert kinds(studio) == ["user", "tool", "text", "build", "note", "tool", "text", "done"]
     state = json.loads(get(f"{url}/api/state")[1])
     assert state["report"]["version"] == 1 and state["report"]["passed"]
     code, body = get(f"{url}/files/v1/block.stl")
@@ -181,7 +182,7 @@ def test_failed_checks_go_back_to_the_agent_until_fixed(running, tmp_path):
     script = f"""count = pathlib.Path("count.txt")
 n = int(count.read_text()) + 1 if count.exists() else 1
 count.write_text(str(n))
-if n > 1:
+if n == 2:
     pathlib.Path("prompts.txt").write_text(prompt)
 pathlib.Path("model.py").write_text({THIN!r} if n == 1 else {GOOD!r})
 say(type="result", is_error=False)
@@ -189,7 +190,7 @@ say(type="result", is_error=False)
     studio, url = running(script)
     post(f"{url}/api/chat", {"message": "a cup"})
     wait_idle(studio)
-    assert kinds(studio) == ["user", "build", "note", "build", "done"]
+    assert kinds(studio) == ["user", "build", "note", "build", "note", "done"]
     assert "wall 0.4" in (studio.workspace / "prompts.txt").read_text()
 
 
@@ -467,6 +468,86 @@ def test_a_real_model_is_never_treated_as_the_placeholder(tmp_path):
     project.mkdir()
     (project / "model.py").write_text(server_module.OLD_STARTER_MODEL + "# edited\n")
     assert not Studio(project, agent_command=["true"]).is_empty
+
+
+REVIEWS_THEN_STOPS = """say(type="system", session_id="s1")
+log = pathlib.Path("prompts.txt")
+log.write_text((log.read_text() if log.exists() else "") + prompt + "\\n=====\\n")
+if "passed the automatic checks" not in prompt:
+    pathlib.Path("model.py").write_text(GOOD)
+say(type="result", is_error=False)
+""".replace("GOOD", repr(GOOD))
+
+
+KEEPS_CHANGING = """say(type="system", session_id="s1")
+pathlib.Path("model.py").write_text(GOOD + "# " + str(time.time()) + "\\n")
+say(type="result", is_error=False)
+""".replace("GOOD", repr(GOOD))
+
+
+def test_a_clean_build_is_reviewed_and_an_unchanged_model_ends_the_turn(running):
+    studio, url = running(REVIEWS_THEN_STOPS)
+    post(f"{url}/api/chat", {"message": "a block please"})
+    wait_idle(studio)
+    prompts = (studio.workspace / "prompts.txt").read_text()
+    assert "builds/v1/preview.png" in prompts and "a block please" in prompts
+    assert (studio.builds / "v1" / "preview.png").stat().st_size > 1000
+    assert studio.report["version"] == 1
+    assert kinds(studio).count("build") == 1 and kinds(studio)[-1] == "done"
+
+
+def test_reviews_are_bounded(running):
+    studio, url = running(KEEPS_CHANGING)
+    post(f"{url}/api/chat", {"message": "go"})
+    wait_idle(studio)
+    assert kinds(studio).count("build") == server_module.MAX_REVIEWS + 1
+    assert kinds(studio)[-1] == "done"
+
+
+def test_a_rebuild_does_not_call_the_agent(running):
+    studio, _ = running(REVIEWS_THEN_STOPS, model=GOOD)
+    studio.rebuild()
+    wait_idle(studio)
+    assert studio.report["passed"] and not (studio.workspace / "prompts.txt").exists()
+
+
+def test_a_failed_preview_does_not_fail_the_build(tmp_path, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("no picture")
+    monkeypatch.setattr(pipeline_module, "render_preview", broken)
+    (tmp_path / "model.py").write_text(GOOD)
+    report = build_version(tmp_path, 1, "x1c")
+    assert report["passed"] and report["preview"] is None
+
+
+def test_report_gives_the_size(tmp_path):
+    (tmp_path / "model.py").write_text("import cadquery as cq\nresult = cq.Workplane('XY').box(30, 20, 10)\n")
+    report = build_version(tmp_path, 1, "x1c")
+    assert report["size"] == [30, 20, 10] and report["parts"][0]["size"] == [30, 20, 10]
+
+
+WITH_BOUGHT = """import cadquery as cq
+BOUGHT = {"motor"}
+def parts():
+    return {"plate": cq.Workplane("XY").box(40, 40, 4), "motor": cq.Workplane("XY").workplane(offset=2).box(10, 10, 10, centered=(True, True, False))}
+"""
+
+
+def test_bought_parts_are_shown_but_not_printed(tmp_path):
+    (tmp_path / "model.py").write_text(WITH_BOUGHT)
+    report = build_version(tmp_path, 1, "x1c")
+    assert report["passed"]
+    motor = next(part for part in report["parts"] if part["name"] == "motor")
+    assert motor["bought"] and motor["check"]["passed"]
+    assert (tmp_path / "builds" / "v1" / "motor.stl").exists()
+    assert [p["name"] for plate in report["plates"] for p in plate["parts"]] == ["plate"]
+
+
+def test_prompt_carries_the_guide_and_real_helper_signatures():
+    prompt = agent_module.system_prompt()
+    assert "Object or machine" in prompt
+    assert "servo_cutout(kind: str='SG90'" in prompt and "soften_edges(" in prompt
+    assert "SERVO_TABLE" in prompt
 
 
 def test_agent_module_describes_the_contract():

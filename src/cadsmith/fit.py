@@ -1,7 +1,8 @@
 """Do the parts fit: the clearance between every pair, measured on the B-rep in assembled pose.
 
 Every pair is checked, at the default clearance unless a :class:`cadsmith.Fit` says otherwise, so
-an undeclared collision cannot hide.
+an undeclared collision cannot hide. A bought part may touch a printed one, as a screw head or a
+servo flange does, but may not overlap it. Two bought parts are only checked if a Fit names them.
 """
 
 from __future__ import annotations
@@ -88,8 +89,19 @@ def _smallest_gap(a, b, required: float, seat: str | None):
     return best, where
 
 
+def _too_far(a, b, required: float) -> bool:
+    """True when the bounding boxes alone show nothing is within reach of the clearance."""
+    box_a, box_b = a.BoundingBox(), b.BoundingBox()
+    reach = required + 1.0
+    return (box_a.xmin > box_b.xmax + reach or box_b.xmin > box_a.xmax + reach
+            or box_a.ymin > box_b.ymax + reach or box_b.ymin > box_a.ymax + reach
+            or box_a.zmin > box_b.zmax + reach or box_b.zmin > box_a.zmax + reach)
+
+
 def _measure(a_name, a, b_name, b, required: float, seat: str | None) -> FitResult:
     pair = f"{a_name} / {b_name}"
+    if _too_far(a, b, required):
+        return FitResult(a_name, b_name, required, None, 0.0, True, f"{pair}: further apart than {required + 1:g} mm", seat=seat)
     overlap = _overlap(a, b)
     if overlap > MIN_OVERLAP_MM3:
         return FitResult(a_name, b_name, required, 0.0, round(overlap, 3), False,
@@ -112,6 +124,8 @@ def check_fits(model: Model, default_clearance: float = DEFAULT_CLEARANCE) -> li
     results = []
     for first, second in combinations(model.parts, 2):
         fit = declared.get(frozenset((first.name, second.name)))
-        required = fit.min_clearance if fit else default_clearance
+        if fit is None and first.bought and second.bought:
+            continue
+        required = fit.min_clearance if fit else (0.0 if first.bought or second.bought else default_clearance)
         results.append(_measure(first.name, first.shape, second.name, second.shape, required, fit.seat if fit else None))
     return results

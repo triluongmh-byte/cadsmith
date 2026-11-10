@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import threading
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
@@ -19,11 +21,43 @@ All dimensions go in a Params class at the top. Optional module-level settings:
   two parts may rest on each other.
 - ORIENT = {"name": "-Z"}, the face that goes on the print bed.
 - QUANTITY = {"name": 2}, copies to print.
-Helpers are in cadsmith.cadlib: enclosure, mounting, cutouts, mechanical, fits, layout, styling, tables.
+- BOUGHT = {"name"}, parts that are bought, not printed.
+Helpers are in cadsmith.cadlib; their signatures are listed below.
 
 After every turn the model is built and measured for you: walls under 0.8 mm fail, and every pair of parts needs 0.3 mm
-of clearance unless a Fit says otherwise. You cannot run commands. Make the edit, then say what changed in one or two
-short sentences, in the language the user writes in."""
+of clearance unless a Fit says otherwise. You cannot run commands. You will then be shown what you built and asked to
+fix or confirm it. Make the edit, then say what changed in one or two short sentences, in the language the user writes
+in."""
+GUIDE_FILE = Path(__file__).parent / "design_guide.md"
+CADLIB_DIR = Path(__file__).parent.parent / "cadlib"
+
+
+def cadlib_reference() -> str:
+    """Every public cadlib function as a signature and a one-line summary, read without importing CadQuery."""
+    lines = []
+    for path in sorted(CADLIB_DIR.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and not node.name.startswith("_")]
+        tables = [target.id for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+                  for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                  if isinstance(target, ast.Name) and target.id.isupper() and not target.id.startswith("_")]
+        if not functions and not tables:
+            continue
+        lines.append(f"cadsmith.cadlib.{path.stem}")
+        if tables:
+            lines.append("  tables: " + ", ".join(tables))
+        for node in functions:
+            summary = (ast.get_docstring(node) or "").split("\n")[0]
+            lines.append(f"  {node.name}({ast.unparse(node.args)})" + (f": {summary}" if summary else ""))
+    return "\n".join(lines)
+
+
+@lru_cache(maxsize=1)
+def system_prompt() -> str:
+    """The contract, the design guide and the helper list, as one prompt."""
+    return f"{SYSTEM_PROMPT}\n\n{GUIDE_FILE.read_text(encoding='utf-8')}\n# Helpers\n\n{cadlib_reference()}"
 
 
 @dataclass
@@ -54,7 +88,7 @@ class ClaudeAgent:
         arguments = [*self.command, "-p", "--output-format", "stream-json", "--verbose",
                      "--permission-mode", "acceptEdits", "--allowedTools", "Read,Edit,Write",
                      "--disallowedTools", "Bash,WebFetch,WebSearch,Agent", "--setting-sources", "project",
-                     "--strict-mcp-config", "--append-system-prompt", SYSTEM_PROMPT]
+                     "--strict-mcp-config", "--append-system-prompt", system_prompt()]
         if self.session_id:
             arguments += ["--resume", self.session_id]
         return arguments

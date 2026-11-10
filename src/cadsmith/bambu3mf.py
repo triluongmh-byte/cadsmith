@@ -43,7 +43,7 @@ def prepare(model: Model, printer: Printer) -> list[Item]:
     """Turn every part of the model for printing, one :class:`Item` per printed copy."""
     bed = (printer.width, printer.depth, printer.height)
     items = []
-    for part in model.parts:
+    for part in model.printed:
         mesh = tessellate(part.shape)
         down = part.down
         if down is None:

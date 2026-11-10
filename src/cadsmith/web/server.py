@@ -28,7 +28,8 @@ logger = logging.getLogger("cadsmith.web")
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 64 * 1024
 MAX_MESSAGE = 8000
-MAX_REPAIRS = 2
+MAX_REPAIRS = 3
+MAX_REVIEWS = 2
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
 SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8"}
@@ -85,6 +86,33 @@ def log_post(path: str, request, response, error) -> None:
             send_gelf(address, payload)
         except (OSError, ValueError) as failure:
             logger.warning("could not reach Graylog: %s", failure)
+
+
+def _preview_path(report: dict) -> str | None:
+    return f"builds/v{report['version']}/{report['preview']}" if report.get("preview") else None
+
+
+def repair_prompt(report: dict, problems: str) -> str:
+    """Ask the agent to fix a build that failed its checks."""
+    preview = _preview_path(report)
+    look = f" Read {preview} first to see what you built." if preview else ""
+    return f"The model you just wrote did not pass.{look} Fix these problems in model.py:\n{problems}"
+
+
+def review_prompt(report: dict, request: str) -> str:
+    """Ask the agent to look at what it built and judge it against the request."""
+    preview = _preview_path(report)
+    size = " x ".join(f"{value:g}" for value in report["size"])
+    if not preview:
+        return (f"v{report['version']} passed the automatic checks but no picture could be drawn. Its overall size is "
+                f"{size} mm. If that does not match the request, fix model.py; if it does, do not touch model.py.")
+    return f"""v{report['version']} passed the automatic checks. Its overall size is {size} mm.
+Use Read on {preview}: iso, front, right and top views, with bought parts in grey. Each view is scaled to fill its frame.
+Judge it as a designer, against this request and your plan: {request!r}
+Does it look like what was asked, at the right size and proportions? Is anything floating, misplaced or passing through
+another part? Could it really be assembled and work? What looks blocky or unfinished that one edit would lift?
+If it needs work, edit model.py. If it is right, leave model.py untouched.
+Finish with one or two sentences telling the user what they now have, in their language. Do not mention this review."""
 
 
 def describe_problems(report: dict) -> str:
@@ -256,8 +284,10 @@ class Studio:
             self._session_file.write_text(json.dumps({"session_id": self.agent.session_id}), encoding="utf-8")
 
     def _run_turn(self, message: str | None) -> None:
-        prompt = message
-        for attempt in range(MAX_REPAIRS + 1):
+        """Let the agent work, build what it wrote, then have it fix problems and review the result."""
+        prompt, problems = message, ""
+        repairs = reviews = 0
+        while True:
             if prompt is not None:
                 before = None if self.is_empty else self.model.read_bytes()
                 result = self.agent.run(prompt, self.emit)
@@ -266,18 +296,28 @@ class Studio:
                     self.emit("error", "Stopped." if result.error == "stopped" else result.error)
                     return
                 if self.is_empty or self.model.read_bytes() == before:
+                    if problems:
+                        self.emit("error", f"v{report['version']} still has problems:\n{problems}")
+                    elif reviews:
+                        self.emit("done", f"v{report['version']} built, checked and reviewed")
                     return  # a question, not a change
             self.emit("build", "the model and run every check")
             report = self.build()
             problems = describe_problems(report)
-            if not problems:
+            if problems:
+                if message is None or repairs == MAX_REPAIRS:
+                    self.emit("error", f"v{report['version']} still has problems:\n{problems}")
+                    return
+                repairs += 1
+                self.emit("note", f"v{report['version']} has problems, asking for a fix:\n{problems}")
+                prompt = repair_prompt(report, problems)
+            elif message is None or reviews == MAX_REVIEWS:
                 self.emit("done", f"v{report['version']} built, all checks passed")
                 return
-            if message is None or attempt == MAX_REPAIRS:
-                self.emit("error", f"v{report['version']} still has problems:\n{problems}")
-                return
-            self.emit("note", f"v{report['version']} has problems, asking for a fix:\n{problems}")
-            prompt = f"The model you just wrote did not pass. Fix these problems in model.py:\n{problems}"
+            else:
+                reviews += 1
+                self.emit("note", f"v{report['version']} passed the checks. Comparing the result with your request.")
+                prompt = review_prompt(report, message)
 
 
 class Projects:

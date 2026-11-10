@@ -14,12 +14,14 @@ class Part:
 
     ``shape`` is a ``cq.Shape`` in the assembled pose. ``down`` names the part face that goes on
     the bed (``-Z``, ``+Z``, ``-X``, ``+X``, ``-Y``, ``+Y``); ``None`` picks the best of the six.
+    A ``bought`` part, such as a servo or a board, is shown and fit-checked but never printed.
     """
 
     name: str
     shape: object
     quantity: int = 1
     down: str | None = None
+    bought: bool = False
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,10 @@ class Model:
     name: str
     parts: list[Part]
     fits: list[Fit] = field(default_factory=list)
+
+    @property
+    def printed(self) -> list[Part]:
+        return [part for part in self.parts if not part.bought]
 
     def __post_init__(self):
         names = [part.name for part in self.parts]

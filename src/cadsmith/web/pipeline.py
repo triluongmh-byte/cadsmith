@@ -8,16 +8,38 @@ import sys
 import traceback
 from pathlib import Path
 
+import cadquery as cq
+
 from cadsmith.bambu3mf import prepare, write_bambu_3mf
 from cadsmith.export import export_part
 from cadsmith.fit import check_fits
 from cadsmith.loader import load_model
+from cadsmith.mesh import tessellate
 from cadsmith.plates import arrange, get_printer
 from cadsmith.printability import check_part
+from cadsmith.render import render_preview
 
 MODEL_FILE = "model.py"
 PLATES_FILE = "plates.3mf"
 REPORT_FILE = "report.json"
+PREVIEW_FILE = "preview.png"
+#: The check of a bought part: nothing to print, so nothing to fail.
+NOT_PRINTED = {"passed": True, "errors": [], "warnings": [], "needs_support": False, "chosen": None, "orientations": []}
+
+
+def _bounds(shape) -> list[float]:
+    box = shape.BoundingBox()
+    return [round(box.xlen, 2), round(box.ylen, 2), round(box.zlen, 2)]
+
+
+def _write_preview(model, out: Path) -> str | None:
+    """Draw the sheet the agent reviews. The build is still good if this fails."""
+    try:
+        bought = tuple(index for index, part in enumerate(model.parts) if part.bought)
+        render_preview([tessellate(part.shape) for part in model.parts], out / PREVIEW_FILE, bought=bought)
+    except Exception:
+        return None
+    return PREVIEW_FILE
 
 
 def build_version(workspace: Path, version: int, printer_name: str, name: str | None = None) -> dict:
@@ -32,8 +54,12 @@ def build_version(workspace: Path, version: int, printer_name: str, name: str | 
     parts = []
     for part in model.parts:
         export_part(part.shape, part.name, out)
-        check = check_part(part.name, part.shape, bed=bed, down=part.down)
-        parts.append({"name": part.name, "quantity": part.quantity, "check": check.to_dict()})
+        if part.bought:
+            check = dict(NOT_PRINTED)
+        else:
+            check = check_part(part.name, part.shape, bed=bed, down=part.down).to_dict()
+        parts.append({"name": part.name, "quantity": part.quantity, "bought": part.bought, "size": _bounds(part.shape),
+                      "check": check})
     fits = [result.to_dict() for result in check_fits(model)]
     plates, plate_error = [], None
     try:
@@ -45,9 +71,12 @@ def build_version(workspace: Path, version: int, printer_name: str, name: str | 
                   for plate in arranged]
     except ValueError as error:
         plate_error = str(error)
+    preview = _write_preview(model, out)
+    assembled = cq.Compound.makeCompound([part.shape for part in model.parts])
     passed = (all(part["check"]["passed"] for part in parts) and all(fit["passed"] for fit in fits)
               and plate_error is None)
     return {"ok": True, "version": version, "passed": passed, "project": name, "parts": parts, "fits": fits,
+            "size": _bounds(assembled), "preview": preview,
             "plates": plates, "plate_error": plate_error, "printer": printer.name,
             "bed": {"width": printer.width, "depth": printer.depth}}
 

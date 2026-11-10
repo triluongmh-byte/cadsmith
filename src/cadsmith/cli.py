@@ -22,7 +22,7 @@ from cadsmith.render import render_meshes
 def _build(args) -> int:
     model = load_model(args.model)
     out = Path(args.out)
-    for part in model.parts:
+    for part in model.printed:
         paths = export_part(part.shape, part.name, out)
         print(f"{part.name}: " + ", ".join(str(path) for path in paths.values()))
     return 0
@@ -47,7 +47,7 @@ def _check(args) -> int:
     printer = get_printer(args.printer)
     bed = (printer.width, printer.depth, printer.height)
     reports = [check_part(part.name, part.shape, min_wall=args.min_wall, warn_wall=max(args.warn_wall, args.min_wall),
-                          overhang_deg=args.overhang, bed=bed, down=part.down) for part in model.parts]
+                          overhang_deg=args.overhang, bed=bed, down=part.down) for part in model.printed]
     if args.json:
         print(json.dumps([report.to_dict() for report in reports], indent=2))
     else:
