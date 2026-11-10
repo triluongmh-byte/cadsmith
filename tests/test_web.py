@@ -496,6 +496,19 @@ def test_a_clean_build_is_reviewed_and_an_unchanged_model_ends_the_turn(running)
     assert kinds(studio).count("build") == 1 and kinds(studio)[-1] == "done"
 
 
+def test_review_prompt_lists_what_would_hurt_the_print():
+    check = {"warnings": ["needs support under the lid"], "errors": []}
+    report = {"version": 2, "preview": "preview.png", "size": [1, 2, 3], "parts": [{"name": "lid", "check": check}]}
+    prompt = server_module.review_prompt(report, "a box")
+    assert "lid: needs support under the lid" in prompt and "count as defects" in prompt
+
+
+def test_a_failed_fit_says_where():
+    report = {"ok": True, "parts": [], "plate_error": None,
+              "fits": [{"passed": False, "message": "a / b: too tight", "location": [1.0, 2.0, 3.0]}]}
+    assert "a / b: too tight near (1.0, 2.0, 3.0)" in describe_problems(report)
+
+
 def test_reviews_are_bounded(running):
     studio, url = running(KEEPS_CHANGING)
     post(f"{url}/api/chat", {"message": "go"})

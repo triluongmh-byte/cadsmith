@@ -30,6 +30,7 @@ MAX_BODY = 64 * 1024
 MAX_MESSAGE = 8000
 MAX_REPAIRS = 3
 MAX_REVIEWS = 2
+MAX_PRINTING_NOTES = 12
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
 SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8"}
@@ -99,6 +100,16 @@ def repair_prompt(report: dict, problems: str) -> str:
     return f"The model you just wrote did not pass.{look} Fix these problems in model.py:\n{problems}"
 
 
+def printing_notes(report: dict) -> str:
+    """What passed the checks but would still make the print worse."""
+    notes = [f"{part['name']}: {warning}" for part in report["parts"] for warning in part["check"]["warnings"]]
+    if not notes:
+        return ""
+    shown = "\n".join(notes[:MAX_PRINTING_NOTES])
+    return ("\nPrinting notes from the checks. Supports that a different ORIENT or a split would avoid, and structural "
+            f"walls under 1.6 mm, count as defects to fix:\n{shown}\n")
+
+
 def review_prompt(report: dict, request: str) -> str:
     """Ask the agent to look at what it built and judge it against the request."""
     preview = _preview_path(report)
@@ -107,7 +118,7 @@ def review_prompt(report: dict, request: str) -> str:
         return (f"v{report['version']} passed the automatic checks but no picture could be drawn. Its overall size is "
                 f"{size} mm. If that does not match the request, fix model.py; if it does, do not touch model.py.")
     return f"""v{report['version']} passed the automatic checks. Its overall size is {size} mm.
-Use Read on {preview}: iso, front, right and top views, with bought parts in grey. Each view is scaled to fill its frame.
+{printing_notes(report)}Use Read on {preview}: iso, front, right and top views, with bought parts in grey. Each view is scaled to fill its frame.
 Judge it as a designer, against this request and your plan: {request!r}
 Compare the overall size with every number in the request: a difference over 1 mm must be fixed.
 Does it look like what was asked, and would someone name it from the top view alone? Is anything floating, misplaced or passing through
@@ -121,7 +132,8 @@ def describe_problems(report: dict) -> str:
     if not report.get("ok"):
         return "The model failed to build:\n" + report.get("error", "unknown error")
     lines = [f"{part['name']}: {error}" for part in report["parts"] for error in part["check"]["errors"]]
-    lines += [fit["message"] for fit in report["fits"] if not fit["passed"]]
+    lines += [fit["message"] + (f" near {tuple(fit['location'])}" if fit.get("location") else "")
+              for fit in report["fits"] if not fit["passed"]]
     if report.get("plate_error"):
         lines.append(report["plate_error"])
     return "\n".join(lines)
