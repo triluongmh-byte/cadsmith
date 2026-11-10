@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable
 
-AGENT_TIMEOUT = 900
+AGENT_TIMEOUT = 2700  # a large assembly can take the agent well over 15 minutes
 SYSTEM_PROMPT = """You write and edit a parametric 3D-printable CadQuery model in ./model.py. It is the only file you
 change. A new project has no model.py yet: create it.
 
@@ -122,7 +122,8 @@ class ClaudeAgent:
             return AgentResult(False, f"could not find the {self.command[0]!r} command; install and sign in to Claude Code")
         with self._lock:
             self._process = process
-        timer = threading.Timer(AGENT_TIMEOUT, process.kill)
+        timed_out = threading.Event()
+        timer = threading.Timer(AGENT_TIMEOUT, lambda: (timed_out.set(), process.kill()))
         timer.start()
         failure = None
         try:
@@ -138,6 +139,8 @@ class ClaudeAgent:
                 self._process = None
         if self.stopped:
             return AgentResult(False, "stopped")
+        if timed_out.is_set():
+            return AgentResult(False, f"the agent ran out of time after {AGENT_TIMEOUT // 60} minutes")
         if failure or process.returncode:
             return AgentResult(False, failure or stderr[-600:].strip() or f"the agent exited with {process.returncode}")
         return AgentResult(True)

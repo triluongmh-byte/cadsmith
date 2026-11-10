@@ -563,5 +563,12 @@ def test_prompt_carries_the_guide_and_real_helper_signatures():
     assert "SERVO_TABLE" in prompt
 
 
+def test_a_turn_that_runs_out_of_time_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(agent_module, "AGENT_TIMEOUT", 0.3)
+    agent = ClaudeAgent(tmp_path, fake_agent(tmp_path, "time.sleep(20)\n"))
+    result = agent.run("hello", lambda *a: None)
+    assert not result.ok and "ran out of time" in result.error
+
+
 def test_agent_module_describes_the_contract():
     assert "parts()" in agent_module.SYSTEM_PROMPT
