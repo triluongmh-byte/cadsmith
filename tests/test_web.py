@@ -290,14 +290,9 @@ def test_new_project_starts_with_its_own_model(running):
     code, created = post(f"{root_of(url)}/api/projects", {"name": "  Giá   đỡ "})
     assert code == 201 and created["name"] == "Giá đỡ"
     assert sorted(names(url)) == sorted(["project", "Giá đỡ"])
-    end = time.time() + 60
-    while time.time() < end:
-        state = json.loads(get(f"{root_of(url)}/p/{created['id']}/api/state")[1])
-        if state["report"]:
-            break
-        time.sleep(0.2)
-    assert state["report"]["project"] == "Giá đỡ"
+    state = json.loads(get(f"{root_of(url)}/p/{created['id']}/api/state")[1])
     assert state["name"] == "Giá đỡ"
+    assert state["empty"] and state["report"] is None and state["status"] == "idle"
 
 
 @pytest.mark.parametrize("name", ["", "   ", "x" * 61, "project", "PROJECT"])
@@ -336,7 +331,7 @@ def test_delete_moves_to_trash_and_forgets_the_project(running):
     folder = studio.workspace
     assert post(f"{url}/api/delete", {})[0] == 200
     assert not folder.exists()
-    assert (folder.parent / ".trash" / studio.id / "model.py").exists()
+    assert (folder.parent / ".trash" / studio.id / "project.json").exists()
     assert names(url) == []
     assert get(f"{url}/api/state")[0] == 404
 
@@ -431,12 +426,47 @@ def test_failed_requests_are_logged_too(running, monkeypatch):
     assert calls[-1][2]["error"].startswith("send a message")
 
 
-def test_starter_model_builds(tmp_path):
+def test_empty_project_has_nothing_to_build(tmp_path):
     (tmp_path / "fresh").mkdir()
     studio = Studio(tmp_path / "fresh", agent_command=["true"])
     studio.build_initial()
-    assert studio.report["passed"]
-    assert kinds(studio) == ["build", "done"]
+    studio.rebuild()
+    assert studio.is_empty and studio.report is None
+    assert studio.events == [] and studio.status == "idle"
+    assert studio._versions() == []
+
+
+def test_first_message_creates_the_model(running):
+    studio, url = running()
+    assert studio.is_empty
+    post(f"{url}/api/chat", {"message": "make a block"})
+    wait_idle(studio)
+    assert not studio.is_empty
+    assert studio.report["version"] == 1
+
+
+def test_a_question_in_an_empty_project_stays_empty(running):
+    studio, url = running('say(type="result", is_error=False)\n')
+    post(f"{url}/api/chat", {"message": "what can you make?"})
+    wait_idle(studio)
+    assert studio.is_empty and "build" not in kinds(studio)
+
+
+def test_old_placeholder_projects_become_empty(tmp_path):
+    project = tmp_path / "old"
+    (project / "builds" / "v1").mkdir(parents=True)
+    (project / "model.py").write_text(server_module.OLD_STARTER_MODEL)
+    (project / "events.jsonl").write_text(json.dumps({"seq": 1, "kind": "build", "text": "x"}) + "\n")
+    studio = Studio(project, agent_command=["true"])
+    assert studio.is_empty and studio.report is None and studio.events == []
+    assert studio._versions() == []
+
+
+def test_a_real_model_is_never_treated_as_the_placeholder(tmp_path):
+    project = tmp_path / "real"
+    project.mkdir()
+    (project / "model.py").write_text(server_module.OLD_STARTER_MODEL + "# edited\n")
+    assert not Studio(project, agent_command=["true"]).is_empty
 
 
 def test_agent_module_describes_the_contract():

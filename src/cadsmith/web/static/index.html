@@ -45,7 +45,8 @@ nav button.on{background:var(--on);color:var(--onText);font-weight:600}
 .hint{position:absolute;left:16px;right:16px;bottom:10px;display:flex;justify-content:space-between;font:11px var(--mono);color:var(--dim);gap:8px;z-index:5;pointer-events:none}
 .hint .synced{color:var(--ok)}
 .alert{position:absolute;left:72px;top:14px;max-width:min(560px,60%);padding:9px 12px;border-radius:10px;background:var(--badBg);color:#ffc4b8;border:1px solid #5b2c22;font-size:12px;white-space:pre-wrap;z-index:6;max-height:130px;overflow:auto}
-.empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim)}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);text-align:center;padding:24px;font-size:15px;line-height:1.6}.empty small{display:block;color:var(--dim);font-size:13px}
+.gizmo{position:absolute;right:14px;bottom:34px;width:104px;height:104px;z-index:5}.gizmo g[data-v]{cursor:pointer}.gizmo text{font:700 11px Inter,system-ui,sans-serif;text-anchor:middle;dominant-baseline:central;fill:#0d1016;pointer-events:none}.gizmo circle{transition:r .1s}.gizmo g[data-v]:hover circle{r:11.5}
 .plates{position:absolute;inset:0;padding:22px;overflow:auto;display:none;flex-wrap:wrap;gap:24px;align-content:flex-start;justify-content:center;z-index:4}
 .plate h5{margin:0 0 8px;font-size:13px;font-weight:600}.plate svg{display:block}
 aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -102,7 +103,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
     <button class="hv" data-page="plates"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Plates</button>
   </nav>
   <main class="view" id="view">
-    <div class="empty" id="empty">Building the first model…</div>
+    <div class="empty" id="empty"></div>
     <div class="plates" id="plates"></div>
     <div class="alert" id="alert" hidden></div>
     <div class="tools" id="tools" role="toolbar" aria-label="3D tools">
@@ -115,6 +116,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
       <button class="hv" id="xray" title="See-through: show inside" aria-label="See-through" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     </div>
     <div class="chips" id="chips"></div>
+    <svg class="gizmo" id="gizmo" viewBox="-52 -52 104 104" role="group" aria-label="Axes: click one to look along it"></svg>
     <div class="hint" id="hint"><span>drag: orbit · scroll: zoom · right-drag: pan</span><span id="synced"></span></div>
   </main>
   <aside>
@@ -146,15 +148,27 @@ function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;
 new ResizeObserver(resize).observe(view);
 function bounds(){return new THREE.Box3().setFromObject(group)}
 function setView(name){const box=bounds();if(box.isEmpty())return;const c=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());span=Math.max(size.x,size.y,size.z,1);
- const dirs={top:[0,-.001,1],front:[0,-1,0],iso:[.75,-1,.65]};const d=name==="fit"?camera.position.clone().sub(controls.target).normalize():new THREE.Vector3(...dirs[name]).normalize();
- camera.position.copy(c).addScaledVector(d,span*3);controls.target.copy(c);camera.zoom=1;resize();controls.update();if(name!=="fit")viewName=name;renderHint()}
+ const dirs={top:[0,-.001,1],bottom:[0,-.001,-1],front:[0,-1,0],back:[0,1,0],right:[1,0,0],left:[-1,0,0],iso:[.75,-1,.65]};const d=name==="fit"?camera.position.clone().sub(controls.target).normalize():new THREE.Vector3(...dirs[name]).normalize();
+ camera.position.copy(c).addScaledVector(d,span*3);controls.target.copy(c);camera.zoom=1;resize();controls.update();if(name!=="fit")viewName=name;sizeAxes();renderHint()}
+/* axes: lines through the origin, and a compass in the corner */
+const AXES=[{l:"X",c:0xff5f56,v:[1,0,0],pos:"right",neg:"left"},{l:"Y",c:0x5fd38a,v:[0,1,0],pos:"back",neg:"front"},{l:"Z",c:0x5b8cff,v:[0,0,1],pos:"top",neg:"bottom"}];
+const originAxes=new THREE.Group();originAxes.visible=false;scene.add(originAxes);
+AXES.forEach(a=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(...a.v)]);const line=new THREE.Line(g,new THREE.LineBasicMaterial({color:a.c,transparent:true,opacity:.85,depthTest:false}));line.renderOrder=10;originAxes.add(line)});
+function sizeAxes(){originAxes.scale.setScalar(span*.75);originAxes.visible=Object.keys(meshes).length>0}
+const SVG="http://www.w3.org/2000/svg",gizmo=$("gizmo"),gizmoItems=[];
+const svgEl=(tag,attrs)=>{const e=document.createElementNS(SVG,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e};
+AXES.forEach(a=>{const color="#"+a.c.toString(16).padStart(6,"0");[1,-1].forEach(sign=>{const line=sign>0?svgEl("line",{stroke:color,"stroke-width":2.5,"stroke-linecap":"round",x1:0,y1:0}):null,g=svgEl("g",{"data-v":sign>0?a.pos:a.neg}),t=svgEl("title",{});t.textContent=`Look from ${sign>0?"+":"-"}${a.l}`;const circle=svgEl("circle",{r:sign>0?10:6,fill:sign>0?color:"#11151d",stroke:color,"stroke-width":sign>0?0:1.5});g.append(t,circle);if(sign>0){const label=svgEl("text",{});label.textContent=a.l;g.append(label)}gizmoItems.push({v:new THREE.Vector3(...a.v).multiplyScalar(sign),line,g,circle,text:g.querySelector("text")})})});
+gizmo.onclick=e=>{const g=e.target.closest("[data-v]");if(g)setView(g.dataset.v)};
+const invert=new THREE.Quaternion(),tip=new THREE.Vector3();let gizmoOrder="";
+function drawGizmo(){invert.copy(camera.quaternion).invert();const R=36;gizmoItems.forEach(i=>{tip.copy(i.v).applyQuaternion(invert);i.z=tip.z;const x=tip.x*R,y=-tip.y*R;i.g.setAttribute("transform",`translate(${x.toFixed(2)} ${y.toFixed(2)})`);if(i.line){i.line.setAttribute("x2",x.toFixed(2));i.line.setAttribute("y2",y.toFixed(2))}});
+ const sorted=[...gizmoItems].sort((a,b)=>a.z-b.z),order=sorted.map(i=>i.g.dataset.v).join();if(order!==gizmoOrder){gizmoOrder=order;sorted.forEach(i=>{if(i.line)gizmo.append(i.line);gizmo.append(i.g)})}}
 $("tools").onclick=e=>{const b=e.target.closest("[data-v]");if(b)setView(b.dataset.v)};
 function applyExplode(){const parts=Object.values(meshes);parts.forEach(m=>m.position.set(0,0,0));if(!exploded||parts.length<2)return;const box=bounds(),c=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3()),reach=Math.max(size.x,size.y,size.z)*.45;
  parts.forEach((m,i)=>{const own=new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());const d=own.clone().sub(c);if(d.length()<1e-3)d.set(0,0,i%2?1:-1);if(Math.abs(d.z)>=Math.max(Math.abs(d.x),Math.abs(d.y))*.5)d.set(0,0,Math.sign(d.z)||1);m.position.copy(d.normalize().multiplyScalar(reach))})}
 $("explode").onclick=()=>{exploded=!exploded;$("explode").classList.toggle("on",exploded);$("explode").setAttribute("aria-pressed",exploded);applyExplode();setView("fit")};
 function applyXray(){Object.values(meshes).forEach(m=>{const mat=m.children[0].material;mat.transparent=xray;mat.opacity=xray?.32:1;mat.depthWrite=!xray;mat.needsUpdate=true})}
 $("xray").onclick=()=>{xray=!xray;$("xray").classList.toggle("on",xray);$("xray").setAttribute("aria-pressed",xray);applyXray()};
-(function loop(){requestAnimationFrame(loop);controls.update();sun.position.copy(camera.position);renderer.render(scene,camera)})();
+(function loop(){requestAnimationFrame(loop);controls.update();sun.position.copy(camera.position);drawGizmo();renderer.render(scene,camera)})();
 const loader=new STLLoader();
 async function loadModel(r){const geos=await Promise.all(r.parts.map(p=>loader.loadAsync(`${BASE}/files/v${r.version}/${encodeURIComponent(p.name)}.stl`)));
  group.clear();for(const k in meshes)delete meshes[k];
@@ -179,17 +193,20 @@ function renderPlates(r){const box=$("plates");box.replaceChildren();const NS="h
  s.append(rect(0,0,W,D,"#171c26","#3b4658"));pl.parts.forEach((p,i)=>{s.append(rect(p.x,p.y,p.width,p.depth,hex(i),"#0d1016"));if(p.width>W*.15){const t=document.createElementNS(NS,"text");t.setAttribute("x",p.x+p.width/2);t.setAttribute("y",D-p.y-p.depth/2+3);t.setAttribute("text-anchor","middle");t.setAttribute("font-size",W/28);t.setAttribute("fill","#0d1016");t.textContent=p.name;s.append(t)}});wrap.append(s);box.append(wrap)})}
 function renderHint(){$("synced").replaceChildren(`View: ${viewName.toUpperCase()}`,...(report?[" · ",el("span","synced",`● synced v${report.version}`)]:[]))}
 function render(){if(!report)return;const r=report;$("download").href=`${BASE}/files/v${r.version}/plates.3mf`;$("download").download=`${(state.name||"project").replace(/[^\p{L}\p{N} _-]/gu,"")}.3mf`;$("source").href=`${BASE}/files/v${r.version}/model.py`;renderTabs(r);renderStats(r);renderPlates(r);renderHint()}
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));const p=b.dataset.page==="plates";$("plates").style.display=p?"flex":"none";["tools","chips","hint"].forEach(i=>$(i).style.display=p?"none":"");renderer.domElement.style.visibility=p?"hidden":"visible"});
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));const p=b.dataset.page==="plates";$("plates").style.display=p?"flex":"none";onPlates=p;applyChrome();renderer.domElement.style.visibility=p?"hidden":"visible"});
 
+let onPlates=false;
+function applyChrome(){const has=!!report;["tools","chips","hint","gizmo"].forEach(i=>$(i).style.display=(has&&!onPlates)?"":"none");["download","source"].forEach(i=>$(i).style.display=has?"":"none");$("tabs").style.display=has?"":"none";$("stats").style.display=has?"":"none"}
+function renderEmpty(){const box=$("empty");if(report){box.style.display="none";return}box.style.display="";const key=busy?"busy":state.empty?"empty":"build";if(box.dataset.key===key)return;box.dataset.key=key;box.replaceChildren();if(key==="empty"){box.append(el("div","","Nothing here yet."));box.lastChild.append(el("small","","Describe what you want to make in the chat on the right."))}else box.textContent=key==="busy"?"Working on the first version…":"Building…"}
 /* status and chat */
 let state={},seq=0,busy=false,lastKey="";
-function renderStatus(){const p=$("status"),r=report;if(busy){p.className="pill run";p.textContent="working…";return}if(state.error){p.className="pill bad";p.textContent="last change failed";return}if(!r){p.className="pill";p.textContent="building";return}const warn=r.parts.reduce((n,x)=>n+x.check.warnings.length,0);p.className="pill "+(r.passed?"ok":"bad");p.textContent=r.passed?`v${r.version} · checks passed${warn?` · ${warn} warning${warn>1?"s":""}`:""}`:`v${r.version} · checks failed`;p.title="Measured on the model. Not printed yet."}
+function renderStatus(){const p=$("status"),r=report;if(busy){p.className="pill run";p.textContent="working…";return}if(state.error){p.className="pill bad";p.textContent="last change failed";return}if(!r){p.className="pill";p.textContent=state.empty?"empty":"building";return}const warn=r.parts.reduce((n,x)=>n+x.check.warnings.length,0);p.className="pill "+(r.passed?"ok":"bad");p.textContent=r.passed?`v${r.version} · checks passed${warn?` · ${warn} warning${warn>1?"s":""}`:""}`:`v${r.version} · checks failed`;p.title="Measured on the model. Not printed yet."}
 const LABEL={tool:"Ran",build:"Build",done:"Done",note:"Check",error:"Error"};
 function addEvent(e){const box=$("log"),stick=box.scrollHeight-box.scrollTop-box.clientHeight<60,d=el("div","ev "+e.kind);if(LABEL[e.kind]){d.append(el("b","",LABEL[e.kind]+" "),document.createTextNode(e.text))}else d.textContent=e.text;box.append(d);if(stick)box.scrollTop=box.scrollHeight}
 async function poll(){try{const res=await fetch(`${BASE}/api/state?since=${seq}`);if(res.status===404){location.href="/";return}state=await res.json();state.events.forEach(addEvent);seq=state.seq;busy=state.status!=="idle";
  $("agentstate").textContent=busy?"working":"idle";$("stop").hidden=!busy;$("working").textContent=busy?`● Working (${state.elapsed}s · esc to interrupt)`:"";$("project").textContent=state.name;document.title=`${state.name} · cadsmith`;
- const a=$("alert");if(state.error){a.hidden=false;a.textContent="The latest change did not build. Showing the last good version.\n"+state.error.trim().split("\n").slice(-2).join("\n")}else a.hidden=true;
- if(state.report){report=state.report;if(report.version!==loaded)await loadModel(report);const key=JSON.stringify([report.version,tab,openPart,state.name]);if(key!==lastKey){lastKey=key;render();renderChips(report)}}renderStatus()}catch(e){$("agentstate").textContent="disconnected"}setTimeout(poll,800)}
+ const a=$("alert");if(state.error){a.hidden=false;a.textContent=(report?"The latest change did not build. Showing the last good version.\n":"The model did not build.\n")+state.error.trim().split("\n").slice(-2).join("\n")}else a.hidden=true;
+ if(state.report){report=state.report;if(report.version!==loaded)await loadModel(report);const key=JSON.stringify([report.version,tab,openPart,state.name]);if(key!==lastKey){lastKey=key;render();renderChips(report)}}applyChrome();renderEmpty();renderStatus()}catch(e){$("agentstate").textContent="disconnected"}setTimeout(poll,800)}
 $("text").onkeydown=async e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();const t=$("text").value.trim();if(!t||busy)return;$("text").value="";const r=await post(`${BASE}/api/chat`,{message:t});if(!r.ok){$("text").value=t;addEvent({kind:"error",text:r.data.error||"could not send"})}}};
 const stop=()=>post(`${BASE}/api/stop`);$("stop").onclick=stop;addEventListener("keydown",e=>{if(e.key==="Escape"&&busy&&!$("dlg").open)stop()});
 
@@ -201,7 +218,7 @@ function ask({title,text,value,ok,danger,input=true,action}){$("dtitle").textCon
 $("dcancel").onclick=()=>$("dlg").close();
 $("dform").onsubmit=async e=>{e.preventDefault();const r=await dialogAction($("dinput").value);if(r.ok)$("dlg").close();if(!r.ok)$("derr").textContent=r.data.error||"That did not work."};
 const go=id=>{location.href=id?`/p/${id}/`:"/"};
-$("new").onclick=()=>ask({title:"New project",text:"Starts with a plain block. Describe what you want in the chat.",ok:"Create",action:async name=>{const r=await post("/api/projects",{name});if(r.ok)go(r.data.id);return r}});
+$("new").onclick=()=>ask({title:"New project",text:"Starts empty. Describe what you want in the chat.",ok:"Create",action:async name=>{const r=await post("/api/projects",{name});if(r.ok)go(r.data.id);return r}});
 $("rename").onclick=()=>ask({title:"Rename project",value:state.name,ok:"Rename",action:async name=>{const r=await post(`${BASE}/api/rename`,{name});if(r.ok){state.name=r.data.name;$("project").textContent=r.data.name}return r}});
 $("delete").onclick=()=>ask({title:`Delete “${state.name}”?`,text:"The model, its versions and its chat leave the list. A copy stays in the .trash folder.",input:false,ok:"Delete",danger:true,action:async()=>{const r=await post(`${BASE}/api/delete`);if(r.ok)go();return r}});
 poll();

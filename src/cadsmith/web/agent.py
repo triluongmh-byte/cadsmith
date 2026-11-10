@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Callable
 
 AGENT_TIMEOUT = 900
-SYSTEM_PROMPT = """You edit a parametric 3D-printable CadQuery model in ./model.py. It is the only file you change.
+SYSTEM_PROMPT = """You write and edit a parametric 3D-printable CadQuery model in ./model.py. It is the only file you
+change. A new project has no model.py yet: create it.
 
 The file must define parts() returning {name: cq.Workplane}, every part in its assembled position, in millimetres.
 All dimensions go in a Params class at the top. Optional module-level settings:

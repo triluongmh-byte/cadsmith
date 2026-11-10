@@ -32,7 +32,8 @@ MAX_REPAIRS = 2
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
 SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8"}
-STARTER_MODEL = '''import cadquery as cq
+#: What new projects used to start with; a project still holding exactly this counts as empty.
+OLD_STARTER_MODEL = '''import cadquery as cq
 
 
 class Params:
@@ -104,11 +105,10 @@ class Studio:
         self.builds = self.workspace / "builds"
         self.builds.mkdir(parents=True, exist_ok=True)
         self.model = self.workspace / MODEL_FILE
-        if not self.model.exists():
-            self.model.write_text(STARTER_MODEL, encoding="utf-8")
         self._meta_file = self.workspace / META_FILE
         self._session_file = self.workspace / "session.json"
         self._events_file = self.workspace / "events.jsonl"
+        self._clear_old_starter()
         self._lock = threading.Lock()
         self.events = self._load_events()
         self.status = "idle"
@@ -117,6 +117,20 @@ class Studio:
         self.error = None
         self.agent = ClaudeAgent(self.workspace, agent_command, self._load_session())
         self._restore_latest()
+
+    def _clear_old_starter(self) -> None:
+        """Empty a project that only ever held the old placeholder block."""
+        if not self.model.exists() or self.model.read_text(encoding="utf-8") != OLD_STARTER_MODEL:
+            return
+        self.model.unlink()
+        shutil.rmtree(self.builds)
+        self.builds.mkdir()
+        if '"kind": "user"' not in (self._events_file.read_text(encoding="utf-8") if self._events_file.exists() else ""):
+            self._events_file.unlink(missing_ok=True)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.model.exists()
 
     @property
     def id(self) -> str:
@@ -137,7 +151,8 @@ class Studio:
         with self._lock:
             report = self.report
             return {"id": self.id, "name": self.name, "status": self.status, "version": report and report["version"],
-                    "passed": report and report["passed"], "updated": self.model.stat().st_mtime}
+                    "passed": report and report["passed"],
+                    "updated": (self.workspace if self.is_empty else self.model).stat().st_mtime}
 
     def _load_session(self) -> str | None:
         try:
@@ -181,7 +196,7 @@ class Studio:
         with self._lock:
             return {"status": self.status, "elapsed": round(time.time() - self.started) if self.status != "idle" else 0,
                     "events": self.events[since:], "seq": len(self.events), "report": self.report, "error": self.error,
-                    "workspace": str(self.workspace), "id": self.id, "name": self.name}
+                    "workspace": str(self.workspace), "id": self.id, "name": self.name, "empty": self.is_empty}
 
     def build(self) -> dict:
         """Build the model as the next version and publish it if it produced geometry."""
@@ -203,14 +218,14 @@ class Studio:
         return report
 
     def build_initial(self) -> None:
-        """Give a fresh project something to look at."""
+        """Build a model that has no build yet, such as after a restart."""
         if self.report is None:
             self.rebuild()
 
     def rebuild(self) -> None:
-        """Build the current model again, unless a turn is already running."""
+        """Build the current model again, unless there is none or a turn is already running."""
         with self._lock:
-            if self.status != "idle":
+            if self.status != "idle" or self.is_empty:
                 return
             self.status, self.started = "working", time.time()
         self._turn(None)
@@ -244,13 +259,13 @@ class Studio:
         prompt = message
         for attempt in range(MAX_REPAIRS + 1):
             if prompt is not None:
-                before = self.model.read_bytes()
+                before = None if self.is_empty else self.model.read_bytes()
                 result = self.agent.run(prompt, self.emit)
                 self._save_session()
                 if not result.ok:
                     self.emit("error", "Stopped." if result.error == "stopped" else result.error)
                     return
-                if self.model.read_bytes() == before:
+                if self.is_empty or self.model.read_bytes() == before:
                     return  # a question, not a change
             self.emit("build", "the model and run every check")
             report = self.build()
@@ -276,7 +291,7 @@ class Projects:
         self._migrate_single_project()
         self.studios: dict[str, Studio] = {}
         for path in self.root.iterdir():
-            if path.is_dir() and re.fullmatch(ID_PATTERN, path.name) and (path / MODEL_FILE).exists():
+            if path.is_dir() and re.fullmatch(ID_PATTERN, path.name) and ((path / META_FILE).exists() or (path / MODEL_FILE).exists()):
                 self.studios[path.name] = self._open(path)
 
     def _open(self, path: Path) -> Studio:
