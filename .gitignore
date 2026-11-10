@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+out/
+*.stl
+*.3mf
+*.step
+.DS_Store
+.env
