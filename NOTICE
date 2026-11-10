@@ -1,0 +1,8 @@
+cadsmith includes code adapted from two MIT-licensed projects, both Copyright (c) 2026 dee:
+
+- autonomous-circuit (packages/kicadpy): the approach for checking printable parts and their
+  clearances, reworked here without any board or enclosure-contract logic.
+- cadcode (a Claude Code skill): the cadlib helpers in src/cadsmith/cadlib, and the conventions
+  for model files.
+
+The full MIT license text is in LICENSE.
