@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cadsmith studio</title>
+<style>
+:root{--bg:#0b0d10;--panel:#14171c;--panel2:#1b1f26;--line:#2a2f38;--text:#e7e9ee;--dim:#8c94a1;--ok:#34c47c;--bad:#ef5b5b;--warn:#e8a33d;--accent:#3d8bfd;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:8px;padding:8px;overflow:hidden}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}button:hover{border-color:#47505e}
+a.btn{color:var(--text);text-decoration:none;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 11px}
+a.btn.primary{border-color:#1f7a55;color:#7fe3b6}
+.left,.right{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.logo{font-weight:700}.chip{font-size:11px;padding:2px 8px;border-radius:5px;background:var(--panel2);color:var(--dim)}
+.project{font-weight:600}.spacer{flex:1}
+.banner{padding:6px 12px;font-size:12px;border-bottom:1px solid var(--line);background:#2a1f0c;color:#f0c98a;white-space:pre-wrap;max-height:90px;overflow:auto}
+.banner.ok{background:#0f2a1e;color:#8fe3bb}.banner.bad{background:#2d1416;color:#f4a6a6}
+.body{flex:1;display:grid;grid-template-columns:190px minmax(0,1fr);min-height:0}
+.side{border-right:1px solid var(--line);padding:10px 8px;overflow:auto}
+.side h4{margin:0 0 8px 4px;font-size:11px;letter-spacing:.08em;color:var(--dim)}
+.part{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:6px;cursor:pointer}.part:hover,.part.on{background:var(--panel2)}
+.part .dot{width:9px;height:9px;border-radius:50%;flex:none}.part .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.part .st{font-size:10px}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.tabs{display:flex;gap:4px;padding:8px 10px 0}.tab{border:0;background:none;color:var(--dim)}.tab.on{background:var(--panel2);color:var(--text)}
+.work{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:10px;padding:10px;min-height:0}
+.view{position:relative;background:#171b21;border:1px solid var(--line);border-radius:10px;overflow:hidden;min-height:0}
+.view canvas{display:block;width:100%;height:100%}
+.views{position:absolute;left:10px;bottom:10px;display:flex;gap:6px}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim)}
+.plates{position:absolute;inset:0;overflow:auto;padding:14px;display:none;flex-wrap:wrap;gap:14px;align-content:flex-start}
+.plate h5{margin:0 0 6px;font-size:12px}
+.info{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;min-height:0}
+.info h3{margin:0 0 3px;font-size:15px}.info h4{margin:13px 0 5px;font-size:12px}.muted{color:var(--dim);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left;font-weight:400}th{color:var(--dim)}tr.best td{color:#8fe3bb}
+.msg{font-size:12px;margin:4px 0}.msg.bad{color:#f4a6a6}.msg.warn{color:#f0c98a}.msg.ok{color:#8fe3bb}
+.bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:12px}
+.log{flex:1;overflow:auto;padding:12px 14px;font:12.5px/1.5 var(--mono)}
+.ev{margin:0 0 11px 14px;position:relative;white-space:pre-wrap;word-break:break-word}.ev:before{content:"●";position:absolute;left:-14px;color:var(--dim)}
+.ev.user{color:#fff;background:var(--panel2);margin-left:0;padding:6px 9px;border-radius:5px}.ev.user:before{content:""}
+.ev.tool:before,.ev.done:before{color:var(--ok)}.ev.error,.ev.error:before{color:var(--bad)}.ev.note:before{color:var(--warn)}.ev.build:before{color:var(--accent)}
+.ev b{font-weight:700}
+.working{padding:2px 14px 8px;font:12.5px var(--mono);color:var(--dim);min-height:24px}
+.input{border-top:1px solid var(--line);padding:9px 12px;display:flex;gap:8px;font:12.5px var(--mono)}
+.input span{color:var(--dim);line-height:1.6}textarea{flex:1;background:none;border:0;outline:0;color:var(--text);font:inherit;resize:none;height:62px}
+.foot{padding:5px 12px;font:11px var(--mono);color:var(--dim);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1100px){body{grid-template-columns:1fr;grid-template-rows:60% 40%}.work{grid-template-columns:1fr}.info{display:none}.body{grid-template-columns:120px minmax(0,1fr)}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<section class="left">
+  <div class="top">
+    <span class="logo">cadsmith</span><span class="chip" id="version">no build</span><span class="project" id="project"></span>
+    <span class="spacer"></span><a class="btn" id="source" target="_blank">model.py</a><a class="btn primary" id="download">Download 3MF</a>
+  </div>
+  <div class="banner" id="banner">Starting…</div>
+  <div class="body">
+    <aside class="side"><h4>PARTS</h4><div id="parts"></div></aside>
+    <div class="main">
+      <div class="tabs"><button class="tab on" data-tab="3d">3D</button><button class="tab" data-tab="plates">Plates</button></div>
+      <div class="work">
+        <div class="view" id="view">
+          <div class="empty" id="empty">Building the first model…</div>
+          <div class="plates" id="plates"></div>
+          <div class="views" id="views"><button data-v="top">Top</button><button data-v="front">Front</button><button data-v="iso">Iso</button><button data-v="fit">Fit</button></div>
+        </div>
+        <div class="info" id="info"></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="right">
+  <div class="bar"><b>agent</b><span class="muted" id="agentstate">idle</span><span class="spacer"></span><button id="stop" hidden>Stop</button></div>
+  <div class="log" id="log"></div>
+  <div class="working" id="working"></div>
+  <div class="input"><span>›</span><textarea id="text" placeholder="Describe the part or the change. Enter to send, Shift+Enter for a new line."></textarea></div>
+  <div class="foot" id="foot"></div>
+</section>
+<script type="module">
+import * as THREE from "three";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+import {STLLoader} from "three/addons/loaders/STLLoader.js";
+const $=id=>document.getElementById(id), COLORS=[0xe8743b,0x3b8ea5,0x8fb04a,0xb0589a,0xd8b13f,0x6f7fd8];
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
+const view=$("view"),renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(devicePixelRatio);view.prepend(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x171b21);
+const camera=new THREE.OrthographicCamera(-1,1,1,-1,-10000,10000);camera.up.set(0,0,1);
+scene.add(new THREE.HemisphereLight(0xffffff,0x444455,1.5));const sun=new THREE.DirectionalLight(0xffffff,2);scene.add(sun);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+const group=new THREE.Group();scene.add(group);let span=100,loaded=0,selected=null;const meshes={};
+function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;renderer.setSize(w,h);const a=w/h,s=span*.72;camera.left=-s*a;camera.right=s*a;camera.top=s;camera.bottom=-s;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe(view);
+function setView(name){const box=new THREE.Box3().setFromObject(group);if(box.isEmpty())return;const c=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());span=Math.max(size.x,size.y,size.z,1);
+ const dirs={top:[0,-.001,1],front:[0,-1,0],iso:[.75,-1,.65]};if(name!=="fit"){const d=new THREE.Vector3(...dirs[name]).normalize();camera.position.copy(c).addScaledVector(d,span*3)}else{const d=camera.position.clone().sub(controls.target).normalize();camera.position.copy(c).addScaledVector(d,span*3)}
+ controls.target.copy(c);camera.zoom=1;resize();controls.update()}
+$("views").onclick=e=>{if(e.target.dataset.v)setView(e.target.dataset.v)};
+(function loop(){requestAnimationFrame(loop);controls.update();sun.position.copy(camera.position);renderer.render(scene,camera)})();
+const loader=new STLLoader();
+async function loadModel(r){const geos=await Promise.all(r.parts.map(p=>loader.loadAsync(`/files/v${r.version}/${encodeURIComponent(p.name)}.stl`)));
+ group.clear();for(const k in meshes)delete meshes[k];
+ geos.forEach((g,i)=>{const m=new THREE.Group();m.add(new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:COLORS[i%COLORS.length],roughness:.62,metalness:.05,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g,28),new THREE.LineBasicMaterial({color:0x101216})));group.add(m);meshes[r.parts[i].name]=m});
+ $("empty").style.display="none";const first=!loaded;loaded=r.version;setView(first?"iso":"fit")}
+function renderParts(r){const box=$("parts");box.replaceChildren();r.parts.forEach((p,i)=>{const row=el("div","part"+(selected===p.name?" on":""));const dot=el("span","dot");dot.style.background="#"+COLORS[i%COLORS.length].toString(16).padStart(6,"0");
+ const eye=el("input");eye.type="checkbox";eye.checked=meshes[p.name]?meshes[p.name].visible:true;eye.onclick=e=>{e.stopPropagation();if(meshes[p.name])meshes[p.name].visible=eye.checked};
+ const st=el("span","st",p.check.passed?"✓":"✕");st.style.color=p.check.passed?"var(--ok)":"var(--bad)";row.append(eye,dot,el("span","name",p.name+(p.quantity>1?` ×${p.quantity}`:"")),st);row.onclick=()=>{selected=selected===p.name?null:p.name;render()};box.append(row)})}
+function table(head,rows){const t=el("table"),h=el("tr");head.forEach(c=>h.append(el("th","",c)));t.append(h);rows.forEach(r=>{const tr=el("tr",r.cls||"");r.cells.forEach(c=>tr.append(el("td","",c)));t.append(tr)});return t}
+function renderInfo(r){const info=$("info");info.replaceChildren();const p=r.parts.find(x=>x.name===selected);
+ if(p){const c=p.check;info.append(el("h3","",p.name),el("div","muted",`${c.samples.toLocaleString()} surface points scanned`));c.errors.forEach(t=>info.append(el("div","msg bad",t)));c.warnings.forEach(t=>info.append(el("div","msg warn",t)));
+  info.append(el("h4","","Face on the bed"),table(["Face","Overhang mm²","Contact mm²","Height"],c.orientations.map(o=>({cls:o.down===c.chosen?"best":"",cells:[o.down+(o.down===c.chosen?" ✓":""),o.overhang_area.toFixed(0),o.bed_contact.toFixed(0),o.height.toFixed(0)]}))));
+  ["step","stl","3mf"].forEach(s=>{const a=el("a","btn",s.toUpperCase());a.href=`/files/v${r.version}/${encodeURIComponent(p.name)}.${s}`;a.download="";a.style.marginRight="6px";info.append(a)});info.lastChild.style.marginTop="10px";return}
+ info.append(el("h3","",r.project),el("div","muted",`${r.parts.length} part${r.parts.length>1?"s":""} · ${r.printer} · select a part for details`));
+ const errors=r.parts.flatMap(x=>x.check.errors.map(t=>`${x.name}: ${t}`));errors.forEach(t=>info.append(el("div","msg bad",t)));if(r.plate_error)info.append(el("div","msg bad",r.plate_error));
+ info.append(el("h4","","Printing"),table(["Part","Face down","Support"],r.parts.map(x=>({cells:[x.name,x.check.chosen||"none",x.check.needs_support?"needed":"no"]}))));
+ info.append(el("h4","","Fit between parts"));if(r.fits.length)info.append(table(["Pair","Gap","Needs"],r.fits.map(f=>({cls:f.passed?"":"",cells:[`${f.a} / ${f.b}`,f.measured===null?"clear":f.measured.toFixed(2)+(f.passed?"":" ✕"),f.required.toFixed(2)]}))));else info.append(el("div","muted","One part, nothing to fit."));
+ info.append(el("h4","","Plates"),table(["Plate","Parts"],r.plates.map(x=>({cells:[x.name,String(x.parts.length)]}))))}
+function renderPlates(r){const box=$("plates");box.replaceChildren();const NS="http://www.w3.org/2000/svg",W=r.bed.width,D=r.bed.depth;r.plates.forEach(pl=>{const wrap=el("div","plate");wrap.append(el("h5","",pl.name));const s=document.createElementNS(NS,"svg");s.setAttribute("viewBox",`-2 -2 ${W+4} ${D+4}`);s.setAttribute("width",260);s.setAttribute("height",260);
+ const rect=(x,y,w,h,f,st)=>{const e=document.createElementNS(NS,"rect");e.setAttribute("x",x);e.setAttribute("y",D-y-h);e.setAttribute("width",w);e.setAttribute("height",h);e.setAttribute("fill",f);e.setAttribute("stroke",st);return e};
+ s.append(rect(0,0,W,D,"#20252d","#4a5361"));pl.parts.forEach((p,i)=>{s.append(rect(p.x,p.y,p.width,p.depth,"#"+COLORS[i%COLORS.length].toString(16).padStart(6,"0"),"#101216"));if(p.width>W*.15){const t=document.createElementNS(NS,"text");t.setAttribute("x",p.x+p.width/2);t.setAttribute("y",D-p.y-p.depth/2);t.setAttribute("text-anchor","middle");t.setAttribute("font-size",W/26);t.setAttribute("fill","#101216");t.textContent=p.name;s.append(t)}});wrap.append(s);box.append(wrap)})}
+function renderBanner(st){const b=$("banner"),r=st.report;if(st.error){b.className="banner bad";b.textContent="The latest change did not build, showing the last good version.\n"+st.error.trim().split("\n").slice(-2).join("\n");return}
+ if(!r){b.className="banner";b.textContent="Building the first model…";return}
+ const warn=r.parts.reduce((n,p)=>n+p.check.warnings.length,0);if(r.passed){b.className="banner ok";b.textContent=`All checks passed${warn?`, ${warn} warning${warn>1?"s":""}`:""}. Measured on the model; not printed yet.`}else{b.className="banner bad";b.textContent="Some checks failed. See the details on the right of the preview."}}
+function render(){const r=window.__r;if(!r)return;$("version").textContent="v"+r.version;$("project").textContent=r.project;$("download").href=`/files/v${r.version}/plates.3mf`;$("download").download=`${r.project}.3mf`;$("source").href=`/files/v${r.version}/model.py`;renderParts(r);renderInfo(r);renderPlates(r)}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));const p=t.dataset.tab==="plates";$("plates").style.display=p?"flex":"none";$("views").style.display=p?"none":"flex";renderer.domElement.style.visibility=p?"hidden":"visible"});
+const LABEL={tool:"Ran",build:"Build",done:"Done",note:"Check",error:"Error"};let seq=0,busy=false;
+function addEvent(e){const box=$("log"),stick=box.scrollHeight-box.scrollTop-box.clientHeight<60,d=el("div","ev "+e.kind);if(LABEL[e.kind]){d.append(el("b","",LABEL[e.kind]+" "));d.append(document.createTextNode(e.text))}else d.textContent=e.text;box.append(d);if(stick)box.scrollTop=box.scrollHeight}
+async function poll(){try{const st=await (await fetch(`/api/state?since=${seq}`)).json();st.events.forEach(addEvent);seq=st.seq;busy=st.status!=="idle";$("agentstate").textContent=busy?"working":"idle";$("stop").hidden=!busy;$("working").textContent=busy?`● Working (${st.elapsed}s · esc to interrupt)`:"";$("foot").textContent=st.workspace;
+ renderBanner(st);if(st.report){window.__r=st.report;if(st.report.version!==loaded){await loadModel(st.report)}render()}}catch(e){$("agentstate").textContent="disconnected"}setTimeout(poll,800)}
+async function post(path,body){return fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
+$("text").onkeydown=async e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();const t=$("text").value.trim();if(!t||busy)return;$("text").value="";await post("/api/chat",{message:t})}};
+const stop=()=>post("/api/stop",{});$("stop").onclick=stop;addEventListener("keydown",e=>{if(e.key==="Escape"&&busy)stop()});
+poll();
+</script>
+</body>
+</html>

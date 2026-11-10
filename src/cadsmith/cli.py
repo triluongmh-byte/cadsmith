@@ -1,4 +1,4 @@
-"""Command line: build, check, fit, plate, render."""
+"""Command line: build, check, fit, plate, render, web."""
 
 from __future__ import annotations
 
@@ -88,6 +88,13 @@ def _render(args) -> int:
     return 0
 
 
+def _web(args) -> int:
+    from cadsmith.web.server import serve
+
+    serve(Path(args.dir), args.port, args.printer)
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cadsmith", description="Parametric CadQuery parts, checked and laid out for Bambu printers.")
     parser.add_argument("--version", action="version", version=__version__)
@@ -128,6 +135,12 @@ def _parser() -> argparse.ArgumentParser:
     render.add_argument("model")
     render.add_argument("-o", "--out", default="out")
     render.set_defaults(run=_render)
+
+    web = commands.add_parser("web", help="open the local studio: chat on the right, live preview on the left")
+    web.add_argument("--dir", default="cadsmith-workspace", help="folder holding model.py and its builds")
+    web.add_argument("--port", type=int, default=8420)
+    web.add_argument("--printer", default=DEFAULT_PRINTER, choices=printers)
+    web.set_defaults(run=_web)
     return parser
 
 
