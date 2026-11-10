@@ -60,8 +60,9 @@ def test_one_part_inside_another_is_caught():
 def test_every_pair_is_checked_without_declaring_it():
     model = Model("m", [Part("a", box(10, 10, 10)), Part("b", box(10, 10, 10, at=(30, 0, 0))),
                         Part("c", box(10, 10, 10, at=(40.1, 0, 0)))])
-    results = {(r.a, r.b): r.passed for r in check_fits(model)}
-    assert results == {("a", "b"): True, ("a", "c"): True, ("b", "c"): False}
+    checked = check_fits(model)
+    assert {(r.a, r.b): r.passed for r in checked} == {("a", "b"): True, ("a", "c"): True, ("b", "c"): False}
+    assert "further apart than 1.3 mm" in checked[0].message
 
 
 def test_lid_resting_on_its_rim_fails_without_a_seat():

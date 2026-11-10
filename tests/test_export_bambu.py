@@ -142,3 +142,16 @@ def test_bambu_studio_slices_every_plate(tmp_path):
     assert done.returncode == 0, result.get("error_string")
     assert sorted(p.name for p in out.glob("*.gcode")) == [f"plate_{plate.index}.gcode" for plate in plates]
     shutil.rmtree(out)
+
+
+@pytest.mark.slicer
+@pytest.mark.skipif(not BAMBU.exists(), reason="BambuStudio is not installed")
+def test_bambu_studio_keeps_the_plate_names(tmp_path):
+    path, plates = project(tmp_path)
+    out = tmp_path / "saved"
+    out.mkdir()
+    subprocess.run([str(BAMBU), "--debug", "1", "--arrange", "0", "--orient", "0", "--outputdir", str(out),
+                    "--export-3mf", "again.3mf", str(path)], capture_output=True, timeout=240, check=True)
+    with zipfile.ZipFile(out / "again.3mf") as package:
+        settings = package.read("Metadata/model_settings.config").decode()
+    assert re.findall(r'plater_name" value="([^"]*)"', settings) == [plate.name for plate in plates]

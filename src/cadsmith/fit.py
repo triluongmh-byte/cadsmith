@@ -97,8 +97,8 @@ def _measure(a_name, a, b_name, b, required: float, seat: str | None) -> FitResu
     gap, where = _smallest_gap(a, b, required, seat)
     if gap is None:
         # Nothing but seat contact is within reach of the required clearance.
-        return FitResult(a_name, b_name, required, None, 0.0, True,
-                         f"{pair}: seated on {seat}, nothing else within {required + 1:g} mm", seat=seat)
+        reason = f"seated on {seat}, nothing else within" if seat else "further apart than"
+        return FitResult(a_name, b_name, required, None, 0.0, True, f"{pair}: {reason} {required + 1:g} mm", seat=seat)
     passed = gap >= required - TOLERANCE
     location = tuple(round(float(c), 2) for c in where)
     verdict = "ok" if passed else "too tight"
