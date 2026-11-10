@@ -1,4 +1,4 @@
-"""The local web studio: one workspace, one agent, one build at a time.
+"""The local web studio: many projects, each with one agent and one build at a time.
 
 It binds to localhost only and refuses requests from other sites, because a chat message here
 ends up editing and running code on this machine.
@@ -10,11 +10,13 @@ import json
 import logging
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -48,8 +50,18 @@ def parts():
 '''
 
 
+META_FILE = "project.json"
+PROJECT_FILES = (MODEL_FILE, "builds", "events.jsonl")
+MAX_NAME = 60
+ID_PATTERN = r"[0-9a-f]{10}"
+
+
 class Busy(RuntimeError):
     """A turn is already running."""
+
+
+class ProjectError(ValueError):
+    """A project request that can be explained to the person who made it."""
 
 
 def send_gelf(address: str, payload: dict) -> None:
@@ -94,6 +106,7 @@ class Studio:
         self.model = self.workspace / MODEL_FILE
         if not self.model.exists():
             self.model.write_text(STARTER_MODEL, encoding="utf-8")
+        self._meta_file = self.workspace / META_FILE
         self._session_file = self.workspace / "session.json"
         self._events_file = self.workspace / "events.jsonl"
         self._lock = threading.Lock()
@@ -104,6 +117,27 @@ class Studio:
         self.error = None
         self.agent = ClaudeAgent(self.workspace, agent_command, self._load_session())
         self._restore_latest()
+
+    @property
+    def id(self) -> str:
+        return self.workspace.name
+
+    @property
+    def name(self) -> str:
+        try:
+            return json.loads(self._meta_file.read_text(encoding="utf-8"))["name"]
+        except (OSError, ValueError, KeyError):
+            return self.workspace.name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        self._meta_file.write_text(json.dumps({"name": value}, ensure_ascii=False), encoding="utf-8")
+
+    def summary(self) -> dict:
+        with self._lock:
+            report = self.report
+            return {"id": self.id, "name": self.name, "status": self.status, "version": report and report["version"],
+                    "passed": report and report["passed"], "updated": self.model.stat().st_mtime}
 
     def _load_session(self) -> str | None:
         try:
@@ -147,14 +181,14 @@ class Studio:
         with self._lock:
             return {"status": self.status, "elapsed": round(time.time() - self.started) if self.status != "idle" else 0,
                     "events": self.events[since:], "seq": len(self.events), "report": self.report, "error": self.error,
-                    "workspace": str(self.workspace)}
+                    "workspace": str(self.workspace), "id": self.id, "name": self.name}
 
     def build(self) -> dict:
         """Build the model as the next version and publish it if it produced geometry."""
         versions = self._versions()
         version = (versions[-1] if versions else 0) + 1
         try:
-            subprocess.run([sys.executable, "-m", "cadsmith.web.pipeline", str(self.workspace), str(version), self.printer],
+            subprocess.run([sys.executable, "-m", "cadsmith.web.pipeline", str(self.workspace), str(version), self.printer, self.name],
                            capture_output=True, timeout=BUILD_TIMEOUT)
             report = json.loads((self.builds / f"v{version}" / REPORT_FILE).read_text(encoding="utf-8"))
         except subprocess.TimeoutExpired:
@@ -169,9 +203,14 @@ class Studio:
         return report
 
     def build_initial(self) -> None:
-        """Give a fresh workspace something to look at."""
+        """Give a fresh project something to look at."""
+        if self.report is None:
+            self.rebuild()
+
+    def rebuild(self) -> None:
+        """Build the current model again, unless a turn is already running."""
         with self._lock:
-            if self.report is not None or self.status != "idle":
+            if self.status != "idle":
                 return
             self.status, self.started = "working", time.time()
         self._turn(None)
@@ -226,7 +265,86 @@ class Studio:
             prompt = f"The model you just wrote did not pass. Fix these problems in model.py:\n{problems}"
 
 
-def make_handler(studio: Studio, allowed_hosts: set[str]):
+class Projects:
+    """Every project under one folder. Folders have fixed ids, so renaming keeps the agent's memory."""
+
+    def __init__(self, root: Path, printer: str = "x1c", agent_command: list[str] | None = None):
+        self.root = root.resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.printer, self.agent_command = printer, agent_command
+        self._lock = threading.Lock()
+        self._migrate_single_project()
+        self.studios: dict[str, Studio] = {}
+        for path in self.root.iterdir():
+            if path.is_dir() and re.fullmatch(ID_PATTERN, path.name) and (path / MODEL_FILE).exists():
+                self.studios[path.name] = self._open(path)
+
+    def _open(self, path: Path) -> Studio:
+        return Studio(path, self.printer, self.agent_command)
+
+    def _migrate_single_project(self) -> None:
+        """Move a workspace from before projects existed into a project of its own."""
+        if not (self.root / MODEL_FILE).exists():
+            return
+        target = self.root / uuid.uuid4().hex[:10]
+        target.mkdir()
+        for name in PROJECT_FILES:
+            if (self.root / name).exists():
+                shutil.move(str(self.root / name), str(target / name))
+        # Claude Code ties a conversation to its folder, so the old one cannot be resumed from here.
+        (self.root / "session.json").unlink(missing_ok=True)
+        (target / META_FILE).write_text(json.dumps({"name": "My first project"}), encoding="utf-8")
+
+    def _clean_name(self, name, ignore: str | None = None) -> str:
+        cleaned = " ".join(str(name or "").split())
+        if not cleaned or len(cleaned) > MAX_NAME or not cleaned.isprintable():
+            raise ProjectError(f"a project name needs 1 to {MAX_NAME} printable characters")
+        taken = {studio.name.casefold() for key, studio in self.studios.items() if key != ignore}
+        if cleaned.casefold() in taken:
+            raise ProjectError(f"there is already a project called {cleaned}")
+        return cleaned
+
+    def list(self) -> list[dict]:
+        with self._lock:
+            studios = list(self.studios.values())
+        return sorted((studio.summary() for studio in studios), key=lambda item: -item["updated"])
+
+    def get(self, project_id: str) -> Studio | None:
+        with self._lock:
+            return self.studios.get(project_id)
+
+    def create(self, name) -> Studio:
+        with self._lock:
+            cleaned = self._clean_name(name)
+            path = self.root / uuid.uuid4().hex[:10]
+            path.mkdir()
+            (path / META_FILE).write_text(json.dumps({"name": cleaned}, ensure_ascii=False), encoding="utf-8")
+            studio = self._open(path)
+            self.studios[studio.id] = studio
+        return studio
+
+    def rename(self, studio: Studio, name) -> str:
+        with self._lock:
+            cleaned = self._clean_name(name, ignore=studio.id)
+            studio.name = cleaned
+        return cleaned
+
+    def delete(self, studio: Studio) -> None:
+        """Move a project to ``.trash`` in the root folder, so a slip can still be recovered by hand."""
+        with self._lock:
+            if studio.status != "idle":
+                raise Busy("this project is still working; stop it first")
+            trash = self.root / ".trash"
+            trash.mkdir(exist_ok=True)
+            shutil.move(str(studio.workspace), str(trash / studio.id))
+            del self.studios[studio.id]
+
+
+def _background(target) -> None:
+    threading.Thread(target=target, daemon=True).start()
+
+
+def make_handler(projects: Projects, allowed_hosts: set[str]):
     class Handler(BaseHTTPRequestHandler):
         server_version = "cadsmith"
 
@@ -244,30 +362,77 @@ def make_handler(studio: Studio, allowed_hosts: set[str]):
         def _json(self, code: int, value) -> None:
             self._send(code, json.dumps(value, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _trusted(self) -> bool:
             if self.headers.get("Host", "") not in allowed_hosts:
                 return False
             origin = self.headers.get("Origin")
             return origin is None or urlsplit(origin).netloc in allowed_hosts
 
+        def _home(self) -> None:
+            listed = projects.list()
+            studio = projects.get(listed[0]["id"]) if listed else projects.create("My first project")
+            if not listed:
+                _background(studio.build_initial)
+            self._redirect(f"/p/{studio.id}/")
+
         def do_GET(self):
             if not self._trusted():
                 return self._json(403, {"error": "forbidden"})
             url = urlsplit(self.path)
             if url.path == "/":
+                return self._home()
+            if url.path == "/api/projects":
+                return self._json(200, {"projects": projects.list()})
+            match = re.fullmatch(rf"/p/({ID_PATTERN})(/.*)", url.path)
+            studio = projects.get(match.group(1)) if match else None
+            if studio is None:
+                return self._json(404, {"error": "not found"})
+            rest = match.group(2)
+            if rest == "/":
                 return self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
-            if url.path == "/api/state":
+            if rest == "/api/state":
                 try:
                     since = max(0, int(parse_qs(url.query).get("since", ["0"])[0]))
                 except ValueError:
                     return self._json(400, {"error": "since must be a number"})
                 return self._json(200, studio.state(since))
-            match = re.fullmatch(r"/files/(v\d+)/([A-Za-z0-9_.\- ]+)", url.path.replace("%20", " "))
-            if match:
-                path = (studio.builds / match.group(1) / match.group(2)).resolve()
-                if (path.is_relative_to(studio.builds) and path.is_file() and path.suffix in SERVED_SUFFIXES):
+            found = re.fullmatch(r"/files/(v\d+)/([A-Za-z0-9_.\- ]+)", rest.replace("%20", " "))
+            if found:
+                path = (studio.builds / found.group(1) / found.group(2)).resolve()
+                if path.is_relative_to(studio.builds) and path.is_file() and path.suffix in SERVED_SUFFIXES:
                     return self._send(200, path.read_bytes(), SERVED_SUFFIXES[path.suffix])
             return self._json(404, {"error": "not found"})
+
+        def _route_post(self, request: dict) -> tuple[int, dict]:
+            if self.path == "/api/projects":
+                studio = projects.create(request.get("name"))
+                _background(studio.build_initial)
+                return 201, {"id": studio.id, "name": studio.name}
+            match = re.fullmatch(rf"/p/({ID_PATTERN})/api/(chat|stop|rename|delete)", self.path)
+            studio = projects.get(match.group(1)) if match else None
+            if studio is None:
+                return 404, {"error": "not found"}
+            action = match.group(2)
+            if action == "chat":
+                message = str(request.get("message", "")).strip()
+                if not message or len(message) > MAX_MESSAGE:
+                    return 400, {"error": f"send a message of 1 to {MAX_MESSAGE} characters"}
+                studio.send(message)
+                return 202, {"ok": True}
+            if action == "stop":
+                return 200, {"stopped": studio.stop()}
+            if action == "rename":
+                name = projects.rename(studio, request.get("name"))
+                _background(studio.rebuild)  # plate names inside the 3MF follow the project name
+                return 200, {"id": studio.id, "name": name}
+            projects.delete(studio)
+            return 200, {"deleted": studio.id}
 
         def do_POST(self):
             request, response, error, code = None, None, None, 500
@@ -283,19 +448,11 @@ def make_handler(studio: Studio, allowed_hosts: set[str]):
                     code, response = 413, {"error": "too large"}
                     return
                 request = json.loads(self.rfile.read(length) or b"{}")
-                if self.path == "/api/chat":
-                    message = str(request.get("message", "")).strip()
-                    if not message or len(message) > MAX_MESSAGE:
-                        code, response = 400, {"error": f"send a message of 1 to {MAX_MESSAGE} characters"}
-                        return
-                    studio.send(message)
-                    code, response = 202, {"ok": True}
-                elif self.path == "/api/stop":
-                    code, response = 200, {"stopped": studio.stop()}
-                else:
-                    code, response = 404, {"error": "not found"}
+                code, response = self._route_post(request)
             except Busy as busy:
                 code, response = 409, {"error": str(busy)}
+            except ProjectError as problem:
+                code, response = 400, {"error": str(problem)}
             except (ValueError, AttributeError) as bad:
                 error, code, response = str(bad), 400, {"error": "invalid request"}
             except Exception as failure:
@@ -308,18 +465,19 @@ def make_handler(studio: Studio, allowed_hosts: set[str]):
     return Handler
 
 
-def create_server(studio: Studio, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
+def create_server(projects: Projects, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
     """A server on localhost. Pass port 0 to take any free port."""
     server = ThreadingHTTPServer(("127.0.0.1", port), None)
     actual = server.server_address[1]
-    server.RequestHandlerClass = make_handler(studio, {f"127.0.0.1:{actual}", f"localhost:{actual}"})
+    server.RequestHandlerClass = make_handler(projects, {f"127.0.0.1:{actual}", f"localhost:{actual}"})
     return server
 
 
-def serve(workspace: Path, port: int = DEFAULT_PORT, printer: str = "x1c") -> None:
+def serve(root: Path, port: int = DEFAULT_PORT, printer: str = "x1c") -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    studio = Studio(workspace, printer)
-    server = create_server(studio, port)
-    threading.Thread(target=studio.build_initial, daemon=True).start()
-    print(f"cadsmith studio: http://127.0.0.1:{server.server_address[1]}  (workspace {studio.workspace})", flush=True)
+    projects = Projects(root, printer)
+    server = create_server(projects, port)
+    for studio in list(projects.studios.values()):
+        _background(studio.build_initial)
+    print(f"cadsmith studio: http://127.0.0.1:{server.server_address[1]}  (projects in {projects.root})", flush=True)
     server.serve_forever()

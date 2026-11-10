@@ -20,12 +20,13 @@ PLATES_FILE = "plates.3mf"
 REPORT_FILE = "report.json"
 
 
-def build_version(workspace: Path, version: int, printer_name: str) -> dict:
+def build_version(workspace: Path, version: int, printer_name: str, name: str | None = None) -> dict:
     """Export, check and arrange the model into ``builds/v<version>``; returns the report."""
     out = workspace / "builds" / f"v{version}"
     out.mkdir(parents=True, exist_ok=True)
     shutil.copy2(workspace / MODEL_FILE, out / MODEL_FILE)
     printer = get_printer(printer_name)
+    name = name or workspace.name
     bed = (printer.width, printer.depth, printer.height)
     model = load_model(workspace / MODEL_FILE)
     parts = []
@@ -36,7 +37,7 @@ def build_version(workspace: Path, version: int, printer_name: str) -> dict:
     fits = [result.to_dict() for result in check_fits(model)]
     plates, plate_error = [], None
     try:
-        arranged = arrange([item for item in prepare(model, printer)], printer, project=workspace.name)
+        arranged = arrange([item for item in prepare(model, printer)], printer, project=name)
         write_bambu_3mf(arranged, printer, out / PLATES_FILE)
         plates = [{"name": plate.name,
                    "parts": [{"name": p.item.name, "x": p.x, "y": p.y, "width": p.item.width, "depth": p.item.depth}
@@ -46,15 +47,15 @@ def build_version(workspace: Path, version: int, printer_name: str) -> dict:
         plate_error = str(error)
     passed = (all(part["check"]["passed"] for part in parts) and all(fit["passed"] for fit in fits)
               and plate_error is None)
-    return {"ok": True, "version": version, "passed": passed, "project": workspace.name, "parts": parts, "fits": fits,
+    return {"ok": True, "version": version, "passed": passed, "project": name, "parts": parts, "fits": fits,
             "plates": plates, "plate_error": plate_error, "printer": printer.name,
             "bed": {"width": printer.width, "depth": printer.depth}}
 
 
 def main(argv: list[str]) -> int:
-    workspace, version, printer = Path(argv[0]), int(argv[1]), argv[2]
+    workspace, version, printer, name = Path(argv[0]), int(argv[1]), argv[2], argv[3]
     try:
-        report = build_version(workspace, version, printer)
+        report = build_version(workspace, version, printer, name)
     except Exception:  # a model file can raise anything; the report carries it back to the agent
         report = {"ok": False, "version": version, "passed": False, "error": traceback.format_exc(limit=6)[-3000:]}
     out = workspace / "builds" / f"v{version}"

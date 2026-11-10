@@ -38,9 +38,12 @@ machine-readable results. Printers: `x1c`, `p1s`, `p1p`, `a1`, `a1mini`.
 uv run cadsmith web        # then open http://127.0.0.1:8420
 ```
 
-A local web page: the model and its check results on the left, a chat on the right. Describe a part or
-a change in any language and the model is rewritten, rebuilt and measured. If a check fails, the agent
-gets the measurements and tries again, up to twice. Everything lives in `cadsmith-workspace/`.
+A local web page: the model fills the middle, with part details and the chat on the right. Describe a
+part or a change in any language and the model is rewritten, rebuilt and measured. If a check fails, the
+agent gets the measurements and tries again, up to twice.
+
+Each project has its own model, versions and chat. Create, rename and delete them from the top bar.
+They live in `cadsmith-workspace/`, and a deleted project moves to `cadsmith-workspace/.trash/`.
 
 The chat uses your signed-in [Claude Code](https://claude.com/claude-code) command line, limited to
 reading and editing files in the workspace. The page is served on localhost only and refuses requests

@@ -13,7 +13,7 @@ from cadsmith.web import agent as agent_module
 from cadsmith.web import server as server_module
 from cadsmith.web.agent import ClaudeAgent
 from cadsmith.web.pipeline import build_version
-from cadsmith.web.server import Studio, create_server, describe_problems, log_post
+from cadsmith.web.server import Projects, Studio, create_server, describe_problems, log_post
 
 GOOD = "import cadquery as cq\ndef parts():\n    return {'block': cq.Workplane('XY').box(30, 20, 10)}\n"
 THIN = "import cadquery as cq\ndef parts():\n    return {'cup': cq.Workplane('XY').box(30, 30, 20).faces('>Z').shell(-0.4)}\n"
@@ -41,15 +41,14 @@ def running(tmp_path):
     servers = []
 
     def start(script=WRITES_GOOD, model=None):
-        workspace = tmp_path / "project"
-        workspace.mkdir(exist_ok=True)
+        projects = Projects(tmp_path / "root", agent_command=fake_agent(tmp_path, script))
+        studio = projects.create("project")
         if model:
-            (workspace / "model.py").write_text(model)
-        studio = Studio(workspace, agent_command=fake_agent(tmp_path, script))
-        server = create_server(studio, 0)
+            studio.model.write_text(model)
+        server = create_server(projects, 0)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         servers.append(server)
-        return studio, f"http://127.0.0.1:{server.server_address[1]}"
+        return studio, f"http://127.0.0.1:{server.server_address[1]}/p/{studio.id}"
 
     yield start
     for server in servers:
@@ -271,6 +270,136 @@ def test_page_is_served(running):
     assert code == 200 and b"cadsmith studio" in body
 
 
+def root_of(url):
+    return url.rsplit("/p/", 1)[0]
+
+
+def names(url):
+    return [item["name"] for item in json.loads(get(f"{root_of(url)}/api/projects")[1])["projects"]]
+
+
+def test_home_opens_the_newest_project(running):
+    studio, url = running()
+    request = urllib.request.Request(f"{root_of(url)}/")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.geturl().endswith(f"/p/{studio.id}/")
+
+
+def test_new_project_starts_with_its_own_model(running):
+    studio, url = running()
+    code, created = post(f"{root_of(url)}/api/projects", {"name": "  Giá   đỡ "})
+    assert code == 201 and created["name"] == "Giá đỡ"
+    assert sorted(names(url)) == sorted(["project", "Giá đỡ"])
+    end = time.time() + 60
+    while time.time() < end:
+        state = json.loads(get(f"{root_of(url)}/p/{created['id']}/api/state")[1])
+        if state["report"]:
+            break
+        time.sleep(0.2)
+    assert state["report"]["project"] == "Giá đỡ"
+    assert state["name"] == "Giá đỡ"
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 61, "project", "PROJECT"])
+def test_bad_or_duplicate_names_are_refused(running, name):
+    _, url = running()
+    code, body = post(f"{root_of(url)}/api/projects", {"name": name})
+    assert code == 400 and body["error"]
+
+
+def test_rename_keeps_folder_history_and_conversation(running):
+    studio, url = running()
+    post(f"{url}/api/chat", {"message": "go"})
+    wait_idle(studio)
+    folder, session = studio.workspace, studio.agent.session_id
+    assert post(f"{url}/api/rename", {"name": "Hộp bút"}) == (200, {"id": studio.id, "name": "Hộp bút"})
+    assert names(url) == ["Hộp bút"]
+    assert studio.workspace == folder and studio.agent.session_id == session
+    time.sleep(0.3)
+    wait_idle(studio)
+    assert studio.report["project"] == "Hộp bút"
+
+
+def test_rename_to_its_own_name_with_new_case_is_allowed(running):
+    _, url = running()
+    assert post(f"{url}/api/rename", {"name": "Project"})[0] == 200
+
+
+def test_rename_refuses_another_projects_name(running):
+    _, url = running()
+    post(f"{root_of(url)}/api/projects", {"name": "other"})
+    assert post(f"{url}/api/rename", {"name": "Other"})[0] == 400
+
+
+def test_delete_moves_to_trash_and_forgets_the_project(running):
+    studio, url = running()
+    folder = studio.workspace
+    assert post(f"{url}/api/delete", {})[0] == 200
+    assert not folder.exists()
+    assert (folder.parent / ".trash" / studio.id / "model.py").exists()
+    assert names(url) == []
+    assert get(f"{url}/api/state")[0] == 404
+
+
+def test_delete_refuses_a_working_project(running):
+    studio, url = running('time.sleep(5)\nsay(type="result", is_error=False)\n', GOOD)
+    post(f"{url}/api/chat", {"message": "slow"})
+    assert post(f"{url}/api/delete", {})[0] == 409
+    assert studio.workspace.exists()
+    post(f"{url}/api/stop", {})
+    wait_idle(studio)
+
+
+def test_home_creates_a_project_after_the_last_is_deleted(running):
+    studio, url = running()
+    post(f"{url}/api/delete", {})
+    code, body = get(f"{root_of(url)}/")
+    assert code == 200 and b"cadsmith studio" in body
+    assert names(url) == ["My first project"]
+
+
+def test_unknown_project_is_not_found(running):
+    _, url = running()
+    assert get(f"{root_of(url)}/p/0000000000/api/state")[0] == 404
+    assert post(f"{root_of(url)}/p/0000000000/api/chat", {"message": "x"})[0] == 404
+
+
+def test_two_projects_work_independently(running):
+    studio, url = running('time.sleep(3)\nsay(type="result", is_error=False)\n', GOOD)
+    _, created = post(f"{root_of(url)}/api/projects", {"name": "other"})
+    other = f"{root_of(url)}/p/{created['id']}"
+    assert post(f"{url}/api/chat", {"message": "one"})[0] == 202
+    time.sleep(0.2)
+    end = time.time() + 60
+    while time.time() < end and json.loads(get(f"{other}/api/state")[1])["status"] != "idle":
+        time.sleep(0.2)
+    assert post(f"{other}/api/chat", {"message": "two"})[0] == 202
+    post(f"{url}/api/stop", {})
+    post(f"{other}/api/stop", {})
+    wait_idle(studio)
+
+
+def test_old_single_workspace_becomes_a_project(tmp_path):
+    root = tmp_path / "root"
+    (root / "builds" / "v1").mkdir(parents=True)
+    (root / "model.py").write_text(GOOD)
+    (root / "session.json").write_text('{"session_id": "gone"}')
+    (root / "builds" / "v1" / "report.json").write_text(json.dumps({"ok": True, "version": 1, "passed": True}))
+    projects = Projects(root, agent_command=["true"])
+    studio = next(iter(projects.studios.values()))
+    assert studio.name == "My first project"
+    assert studio.model.read_text() == GOOD
+    assert studio.report["version"] == 1
+    assert studio.agent.session_id is None
+    assert not (root / "model.py").exists()
+
+
+def test_projects_survive_a_restart(tmp_path):
+    first = Projects(tmp_path / "root", agent_command=["true"]).create("keep me")
+    again = Projects(tmp_path / "root", agent_command=["true"])
+    assert again.get(first.id).name == "keep me"
+
+
 def test_history_survives_a_restart(running, tmp_path):
     studio, url = running()
     post(f"{url}/api/chat", {"message": "go"})
@@ -298,7 +427,7 @@ def test_failed_requests_are_logged_too(running, monkeypatch):
     monkeypatch.setattr(server_module, "log_post", lambda *args: calls.append(args))
     _, url = running()
     post(f"{url}/api/chat", {"message": ""})
-    assert calls[-1][0] == "/api/chat"
+    assert calls[-1][0].endswith("/api/chat")
     assert calls[-1][2]["error"].startswith("send a message")
 
 

@@ -137,7 +137,7 @@ def _parser() -> argparse.ArgumentParser:
     render.set_defaults(run=_render)
 
     web = commands.add_parser("web", help="open the local studio: chat on the right, live preview on the left")
-    web.add_argument("--dir", default="cadsmith-workspace", help="folder holding model.py and its builds")
+    web.add_argument("--dir", default="cadsmith-workspace", help="folder holding your projects")
     web.add_argument("--port", type=int, default=8420)
     web.add_argument("--printer", default=DEFAULT_PRINTER, choices=printers)
     web.set_defaults(run=_web)
