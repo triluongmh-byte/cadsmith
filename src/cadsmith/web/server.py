@@ -109,7 +109,8 @@ def review_prompt(report: dict, request: str) -> str:
     return f"""v{report['version']} passed the automatic checks. Its overall size is {size} mm.
 Use Read on {preview}: iso, front, right and top views, with bought parts in grey. Each view is scaled to fill its frame.
 Judge it as a designer, against this request and your plan: {request!r}
-Does it look like what was asked, at the right size and proportions? Is anything floating, misplaced or passing through
+Compare the overall size with every number in the request: a difference over 1 mm must be fixed.
+Does it look like what was asked, and would someone name it from the top view alone? Is anything floating, misplaced or passing through
 another part? Could it really be assembled and work? What looks blocky or unfinished that one edit would lift?
 If it needs work, edit model.py. If it is right, leave model.py untouched.
 Finish with one or two sentences telling the user what they now have, in their language. Do not mention this review."""

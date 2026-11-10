@@ -4,8 +4,9 @@
 
 Put a short plan in the docstring at the top of model.py and keep it current: what the thing is and does, overall
 envelope, the list of physical parts, each joint and what drives it, the bought hardware, and your assumptions. Fill gaps
-in a vague request with sensible, popular choices instead of asking. Numbers the user gave are requirements. If they
-cannot be met, for instance real hardware does not fit the stated envelope, build the closest honest version and say so.
+in a vague request with sensible, popular choices instead of asking. Numbers the user gave are requirements: the finished model
+measures them within 1 mm on every axis, and you do not trade one away because it seems unneeded. If one truly cannot be
+met, for instance real hardware does not fit the stated envelope, build the closest honest version and say so.
 
 ## Object or machine
 
@@ -55,6 +56,9 @@ servo. Other devices: use the size you are confident of, build a plain envelope,
 
 ## Make it look designed
 
+- Silhouette first. A named animal or object must be recognised from the top view alone, even when it is a machine
+  inside. Its defining features, such as a crab's wide shell and big claws, are large deliberate forms and separate
+  parts where they can be, never small notches on a plate.
 - A plain extrusion of a 2D outline reads as a placeholder. Give visible forms real shape: taper limbs, round joint ends
   about the pivot, add ribs and pockets that follow the load.
 - One radius language: pick one corner radius per part with design_radius_for and apply soften_edges to visible outer

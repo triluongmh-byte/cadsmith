@@ -27,7 +27,7 @@ Helpers are in cadsmith.cadlib; their signatures are listed below.
 After every turn the model is built and measured for you: walls under 0.8 mm fail, and every pair of parts needs 0.3 mm
 of clearance unless a Fit says otherwise. You cannot run commands. You will then be shown what you built and asked to
 fix or confirm it. Make the edit, then say what changed in one or two short sentences, in the language the user writes
-in."""
+in. Do not mention builds or checks still to come."""
 GUIDE_FILE = Path(__file__).parent / "design_guide.md"
 CADLIB_DIR = Path(__file__).parent.parent / "cadlib"
 
