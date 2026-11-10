@@ -32,6 +32,20 @@ uv run cadsmith render examples/lidded_box.py -o out     # PNG preview
 `check` and `fit` exit with status 1 when a part fails, so they can gate a script. Add `--json` for
 machine-readable results. Printers: `x1c`, `p1s`, `p1p`, `a1`, `a1mini`.
 
+## The studio
+
+```sh
+uv run cadsmith web        # then open http://127.0.0.1:8420
+```
+
+A local web page: the model and its check results on the left, a chat on the right. Describe a part or
+a change in any language and the model is rewritten, rebuilt and measured. If a check fails, the agent
+gets the measurements and tries again, up to twice. Everything lives in `cadsmith-workspace/`.
+
+The chat uses your signed-in [Claude Code](https://claude.com/claude-code) command line, limited to
+reading and editing files in the workspace. The page is served on localhost only and refuses requests
+from other sites. Set `CADSMITH_GRAYLOG=host:port` to send a log of each POST to Graylog.
+
 ## Model files
 
 A model file is ordinary Python, and it runs with your privileges, so only load files you trust.
@@ -74,7 +88,7 @@ zone is avoided, and each plate is named, such as `desk 1 big`.
 
 ## Limits
 
-- Text-to-model is not built in: an agent or a person writes the `.py` file.
+- The command line starts from a `.py` file; describing a part in words happens in the studio.
 - Short bridges count as overhang, so holes in vertical walls report a small overhang area.
 - Fits are checked at rest. Motion, snap deflection and press fits (interference) are not modelled.
 - Project files are verified by slicing them with the BambuStudio command line. They set the printer
