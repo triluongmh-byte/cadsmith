@@ -133,7 +133,8 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
 import * as THREE from "three";
 import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 import {STLLoader} from "three/addons/loaders/STLLoader.js";
-const $=id=>document.getElementById(id),COLORS=[0xe8743b,0x5b8cff,0x8fb04a,0xb0589a,0xd8b13f,0x3fb8a8],BOUGHT_COLOR=0x7c8798,partColor=(r,i)=>r.parts[i].bought?BOUGHT_COLOR:COLORS[r.parts.slice(0,i).filter(p=>!p.bought).length%COLORS.length],hex=i=>"#"+COLORS[i%COLORS.length].toString(16).padStart(6,"0");
+import {toCreasedNormals} from "three/addons/utils/BufferGeometryUtils.js";
+const $=id=>document.getElementById(id),COLORS=[0xe4d9c3,0x9dbfcc,0xcda98a,0xa8ba90,0xc6a2b8,0x8fbdb2],BOUGHT_KINDS=[[/servo|motor/i,0x3f66b5],[/horn/i,0xefeadd],[/board|controller|pcb|esp|pico|nano|zero|lilygo|pca/i,0x2f7d57],[/batter|cell|lipo|pack/i,0x3a404c],[/screw|bolt|nut|washer/i,0x9aa1ab]],BOUGHT_COLOR=0x7c8798,partColor=(r,i)=>{const p=r.parts[i];if(p.bought)return(BOUGHT_KINDS.find(([re])=>re.test(p.name))||[0,BOUGHT_COLOR])[1];return COLORS[r.parts.slice(0,i).filter(x=>!x.bought).length%COLORS.length]},hex=i=>"#"+COLORS[i%COLORS.length].toString(16).padStart(6,"0");
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
 const projectId=location.pathname.split("/")[2],BASE=`/p/${projectId}`;
 const post=async(path,body={})=>{const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});return{ok:r.ok,status:r.status,data:await r.json().catch(()=>({}))}};
@@ -141,7 +142,7 @@ const post=async(path,body={})=>{const r=await fetch(path,{method:"POST",headers
 /* 3D */
 const view=$("view"),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(devicePixelRatio);renderer.setClearColor(0,0);view.prepend(renderer.domElement);
 const scene=new THREE.Scene(),camera=new THREE.OrthographicCamera(-1,1,1,-1,-20000,20000);camera.up.set(0,0,1);
-scene.add(new THREE.HemisphereLight(0xffffff,0x444455,1.5));const sun=new THREE.DirectionalLight(0xffffff,2);scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xffffff,0x59606e,1.35));const sun=new THREE.DirectionalLight(0xffffff,1.25);scene.add(sun);const fill=new THREE.DirectionalLight(0xffffff,.45);fill.position.set(-1,-.6,1.2);scene.add(fill);
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
 const group=new THREE.Group();scene.add(group);const meshes={};let span=100,loaded=0,viewName="iso",exploded=false,xray=false;
 function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);const a=w/h,s=span*.68;camera.left=-s*a;camera.right=s*a;camera.top=s;camera.bottom=-s;camera.updateProjectionMatrix()}
@@ -153,7 +154,7 @@ function setView(name){const box=bounds();if(box.isEmpty())return;const c=box.ge
 /* axes: lines through the origin, and a compass in the corner */
 const AXES=[{l:"X",c:0xff5f56,v:[1,0,0],pos:"right",neg:"left"},{l:"Y",c:0x5fd38a,v:[0,1,0],pos:"back",neg:"front"},{l:"Z",c:0x5b8cff,v:[0,0,1],pos:"top",neg:"bottom"}];
 const originAxes=new THREE.Group();originAxes.visible=false;scene.add(originAxes);
-AXES.forEach(a=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(...a.v)]);const line=new THREE.Line(g,new THREE.LineBasicMaterial({color:a.c,transparent:true,opacity:.85,depthTest:false}));line.renderOrder=10;originAxes.add(line)});
+AXES.forEach(a=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(...a.v)]);const line=new THREE.Line(g,new THREE.LineBasicMaterial({color:a.c,transparent:true,opacity:.7}));line.renderOrder=10;originAxes.add(line)});
 function sizeAxes(){originAxes.scale.setScalar(span*.75);originAxes.visible=Object.keys(meshes).length>0}
 const SVG="http://www.w3.org/2000/svg",gizmo=$("gizmo"),gizmoItems=[];
 const svgEl=(tag,attrs)=>{const e=document.createElementNS(SVG,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e};
@@ -172,8 +173,8 @@ $("xray").onclick=()=>{xray=!xray;$("xray").classList.toggle("on",xray);$("xray"
 const loader=new STLLoader();
 async function loadModel(r){const geos=await Promise.all(r.parts.map(p=>loader.loadAsync(`${BASE}/files/v${r.version}/${encodeURIComponent(p.name)}.stl`)));
  group.clear();for(const k in meshes)delete meshes[k];
- geos.forEach((g,i)=>{const m=new THREE.Group();m.add(new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:partColor(r,i),roughness:.62,metalness:.05,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
-  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g,28),new THREE.LineBasicMaterial({color:0x101216})));group.add(m);meshes[r.parts[i].name]=m});
+ geos.forEach((g,i)=>{const m=new THREE.Group();m.add(new THREE.Mesh(toCreasedNormals(g,.5),new THREE.MeshStandardMaterial({color:partColor(r,i),roughness:.78,metalness:.02,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
+  m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g,28),new THREE.LineBasicMaterial({color:0x1b1f27,transparent:true,opacity:.55})));group.add(m);meshes[r.parts[i].name]=m});
  $("empty").style.display="none";const first=!loaded;loaded=r.version;applyExplode();applyXray();setView(first?"iso":"fit");renderChips(r)}
 
 /* details */

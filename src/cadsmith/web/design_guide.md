@@ -23,6 +23,12 @@ parts. It is never one sculpted solid that merely resembles the thing. Build it 
 
 Leave room inside for wires and connectors, and an opening to run them.
 
+A machine should look like one. Show every servo with its servo_horn, the board, the battery, and real fasteners as parts
+(screws through clearance holes into nuts) at each place the structure is bolted together. Make frames open: windows or
+truss cut-outs in the walls so the inside reads, and a top plate with a screen window or service opening rather than a
+blank lid. Walking robots default to two actuated joints per leg, hip and knee, with femur and tibia as separate printed
+parts and rounded hubs at the joints. Use fewer only when asked or when the envelope cannot hold them, and say which.
+
 ## Parts
 
 - parts() returns one entry per physical piece, each in its assembled pose. Four legs are four entries, placed by a loop.

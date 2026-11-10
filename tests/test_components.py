@@ -2,7 +2,7 @@ import cadquery as cq
 import pytest
 
 from cadsmith.cadlib.components import (BOARD_TABLE, CELL_18650, SERVO_TABLE, board, board_hole_points, cell_18650, nut,
-                                        screw, servo, servo_cutout, servo_hole_points)
+                                        screw, servo, servo_cutout, servo_hole_points, servo_horn)
 from cadsmith.fit import check_fits
 from cadsmith.loader import ModelError, load_model
 from cadsmith.model import Fit, Model, Part
@@ -33,6 +33,11 @@ def test_a_servo_without_a_cutout_collides():
     plate = cq.Workplane("XY").workplane(offset=-3).box(90, 50, 3, centered=(True, True, False))
     model = Model("m", [Part("plate", plate.val()), Part("servo", servo().val(), bought=True)])
     assert not check_fits(model)[0].passed
+
+
+def test_horn_reaches_along_x():
+    box = servo_horn(arm=16).val().BoundingBox()
+    assert box.xmax == pytest.approx(16, abs=0.01) and box.zmin == pytest.approx(0, abs=0.01)
 
 
 def test_servo_holes_are_on_the_flange():

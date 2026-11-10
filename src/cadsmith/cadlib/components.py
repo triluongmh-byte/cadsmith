@@ -29,6 +29,7 @@ BOARD_TABLE: dict[str, dict] = {
     "pi_pico": {"length": 51.0, "width": 21.0, "thick": 1.0, "parts_h": 3.0, "holes": (47.0, 11.4), "hole_d": 2.1},
     "pi_zero": {"length": 65.0, "width": 30.0, "thick": 1.4, "parts_h": 3.6, "holes": (58.0, 23.0), "hole_d": 2.75},
     "arduino_nano": {"length": 43.2, "width": 17.8, "thick": 1.6, "parts_h": 4.0, "holes": (40.64, 15.24), "hole_d": 1.7},
+    "pca9685": {"length": 62.5, "width": 25.4, "thick": 1.6, "parts_h": 10.0, "holes": (55.9, 19.0), "hole_d": 2.5},
     "esp32_devkit": {"length": 51.5, "width": 28.3, "thick": 1.6, "parts_h": 3.5, "holes": None, "hole_d": None},
 }
 
@@ -60,6 +61,18 @@ def servo(kind: str = "SG90") -> cq.Workplane:
     boss = cq.Workplane("XY").workplane(offset=above).circle(s["boss_d"] / 2).extrude(s["boss_h"])
     shaft = cq.Workplane("XY").workplane(offset=above + s["boss_h"]).circle(s["shaft_d"] / 2).extrude(s["shaft_h"])
     return body.union(flange).union(boss).union(shaft)
+
+
+def servo_horn(kind: str = "SG90", arm: float = 16.0) -> cq.Workplane:
+    """The stock single-arm horn. Origin on the shaft axis at the top of the shaft; the arm points +X, the hub rises."""
+    s = _lookup(SERVO_TABLE, kind, "servo")
+    if arm <= 0:
+        raise ValueError("a horn needs a positive arm length")
+    hub_d, thick = s["shaft_d"] + 2.8, 1.6
+    hub = cq.Workplane("XY").circle(hub_d / 2).extrude(thick + 2.0)
+    tip = hub_d * 0.45
+    points = [(0, hub_d / 2), (arm, tip / 2), (arm, -tip / 2), (0, -hub_d / 2)]
+    return hub.union(cq.Workplane("XY").polyline(points).close().extrude(thick))
 
 
 def servo_hole_points(kind: str = "SG90") -> list[tuple[float, float]]:
