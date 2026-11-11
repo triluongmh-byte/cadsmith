@@ -19,11 +19,13 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from cadsmith.stl import StlError, describe_stl
 from cadsmith.web.agent import ClaudeAgent
 from cadsmith.web.pipeline import MODEL_FILE, REPORT_FILE
+from cadsmith.web.sync import GitSync, SyncError
 
 logger = logging.getLogger("cadsmith.web")
 STATIC = Path(__file__).parent / "static"
@@ -40,6 +42,7 @@ MAX_MESSAGE = 8000
 MAX_REPAIRS = 3
 MAX_REVIEWS = 2
 MAX_PRINTING_NOTES = 12
+RECAP_CHARS = 12000
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
 SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8",
@@ -177,9 +180,11 @@ def describe_problems(report: dict) -> str:
 
 
 class Studio:
-    def __init__(self, workspace: Path, printer: str = "x1c", agent_command: list[str] | None = None):
+    def __init__(self, workspace: Path, printer: str = "x1c", agent_command: list[str] | None = None,
+                 on_idle: Callable[["Studio"], None] | None = None):
         self.workspace = workspace.resolve()
         self.printer = printer
+        self.on_idle = on_idle  # told when a turn ends, so the projects folder can be committed
         self.builds = self.workspace / "builds"
         self.builds.mkdir(parents=True, exist_ok=True)
         self.model = self.workspace / MODEL_FILE
@@ -192,6 +197,7 @@ class Studio:
         self.status = "idle"
         self.started = 0.0
         self.pending: list[str] = []  # messages sent while the agent works, read at its next step
+        self._turn_from = 0  # where the running turn's events start
         self.report = None
         self.error = None
         self.agent = ClaudeAgent(self.workspace, agent_command, self._load_session())
@@ -264,6 +270,36 @@ class Studio:
                 self.report = report
                 return
 
+    def _build_matches_model(self) -> bool:
+        if self.report is None or self.is_empty:
+            return self.is_empty
+        built = self.builds / f"v{self.report['version']}" / MODEL_FILE
+        return built.exists() and built.read_bytes() == self.model.read_bytes()
+
+    def refresh(self) -> None:
+        """Read the project again after another computer changed it, and build a model this one has not built."""
+        with self._lock:
+            if self.status != "idle":
+                return
+            self.events = self._load_events()
+            self.report = self.error = None
+            self.agent.session_id = self._load_session()
+        self._restore_latest()
+        if not self._build_matches_model():
+            with self._lock:
+                self.report = None
+            self.rebuild()
+
+    def _recap(self, before: int) -> str:
+        """The conversation so far, for an agent that cannot resume it, such as on another computer."""
+        lines = [f"{'User' if event['kind'] == 'user' else 'You'}: {event['text']}"
+                 for event in self.events[:before] if event.get("kind") in ("user", "text")]
+        text = "\n\n".join(lines)[-RECAP_CHARS:]
+        if not text:
+            return ""
+        return ("You are picking up this project without your earlier conversation. "
+                f"This is how it went, latest last:\n\n{text}\n\nThe current model.py is the result.\n\n")
+
     def emit(self, kind: str, text: str) -> None:
         with self._lock:
             event = {"seq": len(self.events) + 1, "kind": kind, "text": text}
@@ -320,6 +356,7 @@ class Studio:
                 self.pending.append(message)
             else:
                 self.status, self.started = "working", time.time()
+                self._turn_from = len(self.events)
         self.emit("user", message)
         if busy:
             self.emit("note", "Queued. The agent reads this at its next step.")
@@ -348,14 +385,30 @@ class Studio:
                 logger.exception("turn failed")
                 self.emit("error", str(error))
             with self._lock:
-                if not self.pending:  # checked under the lock, so a message sent now starts a turn of its own
+                idle = not self.pending  # checked under the lock, so a message sent now starts a turn of its own
+                if idle:
                     self.status = "idle"
-                    return
-                message, self.pending = "\n\n".join(self.pending), []
+                else:
+                    message, self.pending = "\n\n".join(self.pending), []
+            if idle:
+                if self.on_idle:
+                    self.on_idle(self)
+                return
 
     def _save_session(self) -> None:
         if self.agent.session_id:
             self._session_file.write_text(json.dumps({"session_id": self.agent.session_id}), encoding="utf-8")
+
+    def _ask_agent(self, prompt: str):
+        """Run the agent, handing it the conversation so far when it has none to resume."""
+        if self.agent.session_id is None:
+            return self.agent.run(self._recap(self._turn_from) + prompt, self.emit)
+        result = self.agent.run(prompt, self.emit)
+        if not result.ok and "no conversation found" in (result.error or "").lower():
+            self.agent.session_id = None  # Claude Code keeps conversations per computer and folder
+            self._session_file.unlink(missing_ok=True)
+            return self.agent.run(self._recap(self._turn_from) + prompt, self.emit)
+        return result
 
     def _run_turn(self, message: str | None) -> None:
         """Let the agent work, build what it wrote, then have it fix problems and review the result."""
@@ -369,7 +422,7 @@ class Studio:
                 repairs = reviews = 0
             if prompt is not None:
                 before = None if self.is_empty else self.model.read_bytes()
-                result = self.agent.run(prompt, self.emit)
+                result = self._ask_agent(prompt)
                 self._save_session()
                 if not result.ok:
                     self.emit("error", "Stopped." if result.error == "stopped" else result.error)
@@ -408,13 +461,51 @@ class Projects:
         self.printer, self.agent_command = printer, agent_command
         self._lock = threading.Lock()
         self._migrate_single_project()
-        self.studios: dict[str, Studio] = {}
-        for path in self.root.iterdir():
-            if path.is_dir() and re.fullmatch(ID_PATTERN, path.name) and ((path / META_FILE).exists() or (path / MODEL_FILE).exists()):
-                self.studios[path.name] = self._open(path)
+        self.git = GitSync(self.root)
+        try:
+            self.git.sync("Sync on start")  # take the other computer's work before opening anything
+        except SyncError as failure:
+            logger.warning("could not sync the projects folder: %s", failure)
+        self.studios: dict[str, Studio] = {path.name: self._open(path) for path in self._folders()}
+
+    def _folders(self) -> list[Path]:
+        return [path for path in self.root.iterdir()
+                if path.is_dir() and re.fullmatch(ID_PATTERN, path.name) and ((path / META_FILE).exists() or (path / MODEL_FILE).exists())]
 
     def _open(self, path: Path) -> Studio:
-        return Studio(path, self.printer, self.agent_command)
+        return Studio(path, self.printer, self.agent_command, on_idle=self._turn_ended)
+
+    def _turn_ended(self, studio: Studio) -> None:
+        version = studio.report and studio.report.get("version")
+        self.git.save(f"{studio.name}: v{version}" if version else studio.name)
+
+    def _save_in_background(self, message: str) -> None:
+        if self.git.enabled:
+            _background(lambda: self.git.save(message))
+
+    def sync(self) -> dict:
+        """Commit, pull and push, then open what the other computer added or changed."""
+        if not self.git.enabled:
+            raise ProjectError("the projects folder is not a git repository")
+        with self._lock:
+            if any(studio.status != "idle" for studio in self.studios.values()):
+                raise Busy("a project is still working; sync when it is done")
+        changed = self.git.sync()
+        if changed:
+            self._reopen()
+        return {"changed": changed, **self.git.status()}
+
+    def _reopen(self) -> None:
+        with self._lock:
+            found = {path.name: path for path in self._folders()}
+            for key in [key for key, studio in self.studios.items() if key not in found and studio.status == "idle"]:
+                del self.studios[key]  # deleted on the other computer
+            opened = [self.studios.setdefault(key, self._open(path)) for key, path in found.items() if key not in self.studios]
+            kept = [studio for studio in self.studios.values() if studio not in opened]
+        for studio in opened:
+            _background(studio.build_initial)
+        for studio in kept:
+            _background(studio.refresh)
 
     def _migrate_single_project(self) -> None:
         """Move a workspace from before projects existed into a project of its own."""
@@ -455,12 +546,15 @@ class Projects:
             (path / META_FILE).write_text(json.dumps({"name": cleaned}, ensure_ascii=False), encoding="utf-8")
             studio = self._open(path)
             self.studios[studio.id] = studio
+        self._save_in_background(f"New project {cleaned}")
         return studio
 
     def rename(self, studio: Studio, name) -> str:
         with self._lock:
             cleaned = self._clean_name(name, ignore=studio.id)
             studio.name = cleaned
+        if studio.is_empty:  # a model is rebuilt after a rename and saved when that ends
+            self._save_in_background(f"Rename to {cleaned}")
         return cleaned
 
     def delete(self, studio: Studio) -> None:
@@ -470,8 +564,10 @@ class Projects:
                 raise Busy("this project is still working; stop it first")
             trash = self.root / ".trash"
             trash.mkdir(exist_ok=True)
+            name = studio.name
             shutil.move(str(studio.workspace), str(trash / studio.id))
             del self.studios[studio.id]
+        self._save_in_background(f"Delete {name}")
 
 
 def _background(target) -> None:
@@ -525,6 +621,8 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 return self._home()
             if url.path == "/api/projects":
                 return self._json(200, {"projects": projects.list()})
+            if url.path == "/api/sync":
+                return self._json(200, projects.git.status())
             match = re.fullmatch(rf"/p/({ID_PATTERN})(/.*)", url.path)
             studio = projects.get(match.group(1)) if match else None
             if studio is None:
@@ -556,6 +654,11 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 studio = projects.create(request.get("name"))
                 _background(studio.build_initial)
                 return 201, {"id": studio.id, "name": studio.name}
+            if self.path == "/api/sync":
+                try:
+                    return 200, projects.sync()
+                except SyncError as failure:
+                    return 409, {"error": str(failure)}
             match = re.fullmatch(rf"/p/({ID_PATTERN})/api/(chat|stop|rename|delete)", self.path)
             studio = projects.get(match.group(1)) if match else None
             if studio is None:

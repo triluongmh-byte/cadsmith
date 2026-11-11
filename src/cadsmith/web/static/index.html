@@ -122,6 +122,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
   <button class="btn hv" id="new" title="New project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New</button>
   <button class="btn hv" id="rename" title="Rename this project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg>Rename</button>
   <button class="btn hv" id="delete" title="Delete this project"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>Delete</button>
+  <button class="btn hv" id="sync" title="Commit, pull and push the projects folder" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/></svg><span id="synclabel">Sync</span></button>
   <span class="pill" id="status">starting</span>
   <span class="grow"></span>
   <a class="btn hv" id="source" target="_blank" rel="noopener">model.py</a>
@@ -362,6 +363,11 @@ const go=id=>{location.href=id?`/p/${id}/`:"/"};
 $("new").onclick=()=>ask({title:"New project",text:"Starts empty. Describe what you want in the chat.",ok:"Create",action:async name=>{const r=await post("/api/projects",{name});if(r.ok)go(r.data.id);return r}});
 $("rename").onclick=()=>ask({title:"Rename project",value:state.name,ok:"Rename",action:async name=>{const r=await post(`${BASE}/api/rename`,{name});if(r.ok){state.name=r.data.name;$("project").textContent=r.data.name}return r}});
 $("delete").onclick=()=>ask({title:`Delete “${state.name}”?`,text:"The model, its versions and its chat leave the list. A copy stays in the .trash folder.",input:false,ok:"Delete",danger:true,action:async()=>{const r=await post(`${BASE}/api/delete`);if(r.ok)go();return r}});
+const syncShow=s=>{if(!s.enabled)return;$("sync").hidden=false;const waiting=s.unpushed>0;$("synclabel").textContent=s.error?"Sync failed":waiting?`Sync (${s.unpushed})`:"Sync";$("sync").title=s.error||(s.remote?(waiting?`${s.unpushed} change${s.unpushed>1?"s":""} not pushed yet`:"Commit, pull and push the projects folder"):"No remote yet: changes are only committed on this computer")};
+fetch("/api/sync").then(r=>r.json()).then(syncShow).catch(()=>{});
+$("sync").onclick=async()=>{$("sync").disabled=true;$("synclabel").textContent="Syncing…";const r=await post("/api/sync");$("sync").disabled=false;
+  if(!r.ok){syncShow({enabled:true,error:r.data.error||"That did not work."});alert(r.data.error||"Sync failed.");return}
+  syncShow(r.data);if(r.data.changed){const list=await fetch("/api/projects").then(x=>x.json());list.projects.some(p=>p.id===state.id)?location.reload():go()}};
 poll();
 </script>
 </body>

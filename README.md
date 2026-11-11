@@ -83,7 +83,24 @@ look along an axis, the eye button shows through parts, and the Plates page show
 out on the print bed.
 
 Each project has its own model, versions and chat. Create, rename and delete them from the top bar.
-They live in `cadsmith-workspace/`, and a deleted project moves to `cadsmith-workspace/.trash/`.
+They live in `cadsmith-workspace/`, or in the folder given by `--dir` or `CADSMITH_HOME`, and a deleted
+project moves to `.trash/` inside it.
+
+### Projects on more than one computer
+
+Keep the projects folder in a private git repository and point every computer at its clone:
+
+```bash
+git clone https://github.com/you/cadsmith-projects.git ~/cadsmith-projects
+export CADSMITH_HOME=~/cadsmith-projects        # Windows: setx CADSMITH_HOME %USERPROFILE%\cadsmith-projects
+uv run cadsmith web
+```
+
+The studio pulls when it starts, commits and pushes after every turn, and has a Sync button for
+pulling while it runs. Builds and Claude Code sessions stay on each computer: a pulled model is built
+again there, and the agent gets a recap of the chat instead of its old conversation, so version numbers
+can differ between computers. Two computers may chat in one project, but if both change `model.py`
+before syncing, nothing is merged and the Sync button says so; sort it out with git in that folder.
 
 The chat uses your signed-in [Claude Code](https://claude.com/claude-code) command line, limited to
 reading and editing files in the workspace. The page is served on localhost only and refuses requests
