@@ -188,8 +188,16 @@ const invert=new THREE.Quaternion(),tip=new THREE.Vector3();let gizmoOrder="";
 function drawGizmo(){invert.copy(camera.quaternion).invert();const R=36;gizmoItems.forEach(i=>{tip.copy(i.v).applyQuaternion(invert);i.z=tip.z;const x=tip.x*R,y=-tip.y*R;i.g.setAttribute("transform",`translate(${x.toFixed(2)} ${y.toFixed(2)})`);if(i.line){i.line.setAttribute("x2",x.toFixed(2));i.line.setAttribute("y2",y.toFixed(2))}});
  const sorted=[...gizmoItems].sort((a,b)=>a.z-b.z),order=sorted.map(i=>i.g.dataset.v).join();if(order!==gizmoOrder){gizmoOrder=order;sorted.forEach(i=>{if(i.line)gizmo.append(i.line);gizmo.append(i.g)})}}
 $("tools").onclick=e=>{const b=e.target.closest("[data-v]");if(b)setView(b.dataset.v)};
+/* exploded view: the parts stacked over the biggest one lift off in layers (a lid comes off its body, what sat
+   inside drops out below); every other part moves straight out from the middle */
 function applyExplode(){const parts=Object.values(meshes);parts.forEach(m=>m.position.set(0,0,0));if(!exploded||parts.length<2)return;const box=bounds(),c=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3()),reach=Math.max(size.x,size.y,size.z)*.45;
- parts.forEach((m,i)=>{const own=new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());const d=own.clone().sub(c);if(d.length()<1e-3)d.set(0,0,i%2?1:-1);if(Math.abs(d.z)>=Math.max(Math.abs(d.x),Math.abs(d.y))*.5)d.set(0,0,Math.sign(d.z)||1);m.position.copy(d.normalize().multiplyScalar(reach))})}
+ const info=parts.map(m=>{const b=new THREE.Box3().setFromObject(m);return{m,b,c:b.getCenter(new THREE.Vector3()),s:b.getSize(new THREE.Vector3())}}),vol=x=>x.s.x*x.s.y*x.s.z,base=info.reduce((a,x)=>vol(x)>vol(a)?x:a);
+ const inset=base.s.clone().multiplyScalar(.25),core=info.filter(x=>x===base||(x.c.x>base.b.min.x+inset.x&&x.c.x<base.b.max.x-inset.x&&x.c.y>base.b.min.y+inset.y&&x.c.y<base.b.max.y-inset.y));
+ const levels=[];[...core].sort((p,q)=>p.c.z-q.c.z).forEach(x=>{const l=levels[levels.length-1];if(l&&x.c.z-l.cz<1.5){l.items.push(x);l.min=Math.min(l.min,x.b.min.z);l.max=Math.max(l.max,x.b.max.z)}else levels.push({cz:x.c.z,items:[x],min:x.b.min.z,max:x.b.max.z})});
+ const gap=Math.max(size.x,size.y,size.z)*.13,home=levels.findIndex(l=>l.items.includes(base));let top=levels[home].max,bottom=levels[home].min;
+ for(let i=home+1;i<levels.length;i++){const l=levels[i],dz=top+gap-l.min;l.items.forEach(x=>x.m.position.set(0,0,dz));top=l.max+dz}
+ for(let i=home-1;i>=0;i--){const l=levels[i],dz=bottom-gap-l.max;l.items.forEach(x=>x.m.position.set(0,0,dz));bottom=l.min+dz}
+ info.filter(x=>!core.includes(x)).forEach((x,i)=>{const d=x.c.clone().sub(c);if(d.length()<1e-3)d.set(0,0,i%2?1:-1);if(Math.abs(d.z)>=Math.max(Math.abs(d.x),Math.abs(d.y))*.5)d.set(0,0,Math.sign(d.z)||1);x.m.position.copy(d.normalize().multiplyScalar(reach))})}
 $("explode").onclick=()=>{clearRulings();exploded=!exploded;$("explode").classList.toggle("on",exploded);$("explode").setAttribute("aria-pressed",exploded);applyExplode();setView("fit")};
 function applyXray(){Object.values(meshes).forEach(m=>{const mat=m.children[0].material;mat.transparent=xray;mat.opacity=xray?.32:1;mat.depthWrite=!xray;mat.needsUpdate=true})}
 $("xray").onclick=()=>{xray=!xray;$("xray").classList.toggle("on",xray);$("xray").setAttribute("aria-pressed",xray);applyXray()};
