@@ -218,12 +218,42 @@ def test_broken_model_keeps_the_last_good_preview(running):
     assert "SyntaxError" in state["error"]
 
 
-def test_second_message_while_busy_is_refused(running):
-    studio, url = running('time.sleep(4)\nsay(type="result", is_error=False)\n', GOOD)
-    assert post(f"{url}/api/chat", {"message": "one"})[0] == 202
-    assert post(f"{url}/api/chat", {"message": "two"})[0] == 409
+SLOW_LOGGER = """log = pathlib.Path("prompts.txt")
+log.write_text((log.read_text() if log.exists() else "") + prompt + "\\n=====\\n")
+if "passed the automatic checks" not in prompt:
+    time.sleep(2)
+    pathlib.Path("model.py").write_text(GOOD)
+say(type="result", is_error=False)
+""".replace("GOOD", repr(GOOD))
+
+
+def test_a_message_sent_while_working_reaches_the_next_step(running):
+    studio, url = running(SLOW_LOGGER)
+    assert post(f"{url}/api/chat", {"message": "one"}) == (202, {"ok": True, "queued": False})
+    assert post(f"{url}/api/chat", {"message": "make it two"}) == (202, {"ok": True, "queued": True})
+    assert json.loads(get(f"{url}/api/state")[1])["queued"] == 1
+    wait_idle(studio, 120)
+    steps = (studio.workspace / "prompts.txt").read_text().split("=====")
+    assert "make it two" not in steps[0] and "make it two" in steps[1]
+    assert "added this while you were working" in steps[1]
+    assert not studio.pending
+
+
+def test_a_message_after_the_last_step_starts_another_turn(running):
+    studio, url = running('log = pathlib.Path("prompts.txt")\nlog.write_text((log.read_text() if log.exists() else "") + prompt + "|")\ntime.sleep(1)\nsay(type="result", is_error=False)\n', GOOD)
+    post(f"{url}/api/chat", {"message": "a question"})
+    post(f"{url}/api/chat", {"message": "and another"})
+    wait_idle(studio, 60)
+    assert (studio.workspace / "prompts.txt").read_text().split("|")[:2] == ["a question", "and another"]
+
+
+def test_stop_drops_queued_messages(running):
+    studio, url = running('say(type="system", session_id="s")\ntime.sleep(60)\n', GOOD)
+    post(f"{url}/api/chat", {"message": "slow"})
+    post(f"{url}/api/chat", {"message": "later"})
     post(f"{url}/api/stop", {})
     wait_idle(studio)
+    assert not studio.pending and any("Dropped 1 queued message" in e["text"] for e in studio.events)
 
 
 def test_stop_ends_the_turn(running):

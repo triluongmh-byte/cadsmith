@@ -28,6 +28,7 @@ from cadsmith.web.pipeline import MODEL_FILE, REPORT_FILE
 logger = logging.getLogger("cadsmith.web")
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 64 * 1024
+MAX_QUEUED = 10
 MAX_UPLOAD = 100 * 1024 * 1024
 UPLOAD_DIR = "uploads"
 #: Picture formats the agent can look at, by the bytes they start with.
@@ -190,6 +191,7 @@ class Studio:
         self.events = self._load_events()
         self.status = "idle"
         self.started = 0.0
+        self.pending: list[str] = []  # messages sent while the agent works, read at its next step
         self.report = None
         self.error = None
         self.agent = ClaudeAgent(self.workspace, agent_command, self._load_session())
@@ -273,6 +275,7 @@ class Studio:
         with self._lock:
             return {"status": self.status, "elapsed": round(time.time() - self.started) if self.status != "idle" else 0,
                     "events": self.events[since:], "seq": len(self.events), "report": self.report, "error": self.error,
+                    "queued": len(self.pending),
                     "workspace": str(self.workspace), "id": self.id, "name": self.name, "empty": self.is_empty}
 
     def build(self) -> dict:
@@ -307,26 +310,48 @@ class Studio:
             self.status, self.started = "working", time.time()
         self._turn(None)
 
-    def send(self, message: str) -> None:
+    def send(self, message: str) -> bool:
+        """Start a turn, or queue the message for the running one. Returns True when it was queued."""
         with self._lock:
-            if self.status != "idle":
-                raise Busy("the agent is still working")
-            self.status, self.started = "working", time.time()
+            busy = self.status != "idle"
+            if busy and len(self.pending) >= MAX_QUEUED:
+                raise Busy(f"{MAX_QUEUED} messages are already waiting; let the agent catch up")
+            if busy:
+                self.pending.append(message)
+            else:
+                self.status, self.started = "working", time.time()
         self.emit("user", message)
-        threading.Thread(target=self._turn, args=(message,), daemon=True).start()
+        if busy:
+            self.emit("note", "Queued. The agent reads this at its next step.")
+        else:
+            threading.Thread(target=self._turn, args=(message,), daemon=True).start()
+        return busy
 
     def stop(self) -> bool:
-        return self.agent.stop()
+        with self._lock:
+            dropped, self.pending = len(self.pending), []
+        stopped = self.agent.stop()
+        if dropped:
+            self.emit("note", f"Dropped {dropped} queued message{'s' if dropped > 1 else ''}.")
+        return stopped
 
-    def _turn(self, message: str) -> None:
-        try:
-            self._run_turn(message)
-        except Exception as error:  # the turn runs on its own thread; nothing else would report this
-            logger.exception("turn failed")
-            self.emit("error", str(error))
-        finally:
+    def _take_pending(self) -> str | None:
+        with self._lock:
+            taken, self.pending = self.pending, []
+        return "\n\n".join(taken) if taken else None
+
+    def _turn(self, message: str | None) -> None:
+        while True:
+            try:
+                self._run_turn(message)
+            except Exception as error:  # the turn runs on its own thread; nothing else would report this
+                logger.exception("turn failed")
+                self.emit("error", str(error))
             with self._lock:
-                self.status = "idle"
+                if not self.pending:  # checked under the lock, so a message sent now starts a turn of its own
+                    self.status = "idle"
+                    return
+                message, self.pending = "\n\n".join(self.pending), []
 
     def _save_session(self) -> None:
         if self.agent.session_id:
@@ -337,6 +362,11 @@ class Studio:
         prompt, problems = message, ""
         repairs = reviews = 0
         while True:
+            added = self._take_pending() if prompt is not None and prompt is not message else None
+            if added:  # the user wrote while the agent worked: hand it over at this step
+                prompt += f"\n\nThe user added this while you were working. It comes first:\n{added}"
+                message = f"{message}\n\n{added}" if message else added
+                repairs = reviews = 0
             if prompt is not None:
                 before = None if self.is_empty else self.model.read_bytes()
                 result = self.agent.run(prompt, self.emit)
@@ -535,8 +565,7 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 message = str(request.get("message", "")).strip()
                 if not message or len(message) > MAX_MESSAGE:
                     return 400, {"error": f"send a message of 1 to {MAX_MESSAGE} characters"}
-                studio.send(message)
-                return 202, {"ok": True}
+                return 202, {"ok": True, "queued": studio.send(message)}
             if action == "stop":
                 return 200, {"stopped": studio.stop()}
             if action == "rename":
