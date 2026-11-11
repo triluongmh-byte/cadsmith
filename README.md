@@ -21,7 +21,10 @@ uv sync
 uv run cadsmith --help
 ```
 
-On Windows, in PowerShell:
+On Windows, the easy way: download the ZIP from GitHub (Code, then Download ZIP), unzip it and
+double-click `start-windows.bat`. It installs uv and the dependencies, then opens the studio.
+
+Or in PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # installs uv
