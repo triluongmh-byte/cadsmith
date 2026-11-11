@@ -42,6 +42,8 @@ def write_project(root, project_id, name, model=GOOD, events=()):
     (folder / "project.json").write_text(json.dumps({"name": name}))
     (folder / "model.py").write_text(model)
     (folder / "session.json").write_text(json.dumps({"session_id": "local"}))
+    (folder / "__pycache__").mkdir()
+    (folder / "__pycache__" / "model.cpython-312.pyc").write_bytes(b"\0")
     with (folder / "events.jsonl").open("a") as handle:
         for event in events:
             handle.write(json.dumps(event) + "\n")
@@ -62,6 +64,7 @@ def test_a_project_reaches_the_other_computer_without_its_builds(two_computers):
     assert (two / "a1b2c3d4e5" / "model.py").read_text() == GOOD
     assert not (two / "a1b2c3d4e5" / "builds").exists()
     assert not (two / "a1b2c3d4e5" / "session.json").exists()
+    assert not (two / "a1b2c3d4e5" / "__pycache__").exists()
     assert GitSync(one).status()["unpushed"] == 0
 
 

@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 GIT_TIMEOUT = 120
-IGNORED = ("*/builds/", "*/session.json", ".trash/")
+IGNORED = ("*/builds/", "*/session.json", ".trash/", "__pycache__/", "*.pyc")
 # Both computers only ever append to a conversation, so a merge keeps the lines from each.
 ATTRIBUTES = ("*/events.jsonl merge=union",)
 FALLBACK_IDENTITY = ("-c", "user.name=cadsmith", "-c", "user.email=cadsmith@localhost")
