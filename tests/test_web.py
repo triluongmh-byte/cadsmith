@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import stat
 import sys
@@ -6,6 +7,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -140,6 +142,22 @@ def test_agent_passes_a_failed_result_on(tmp_path):
     command = fake_agent(tmp_path, 'say(type="result", is_error=True, result="out of credits")\n')
     result = ClaudeAgent(tmp_path, command).run("hi", lambda *_: None)
     assert (result.ok, result.error) == (False, "out of credits")
+
+
+def test_agent_reads_its_output_as_utf8(tmp_path):
+    script = ('sys.stdout.buffer.write((json.dumps({"type": "assistant", "message": {"content": [{"type": "text", '
+              '"text": "Xong r\u1ed3i fen \U0001f5ff"}]}}, ensure_ascii=False) + "\\n").encode("utf-8"))\n'
+              'sys.stdout.flush()\nsay(type="result", is_error=False)\n')
+    seen = []
+    result = ClaudeAgent(tmp_path, fake_agent(tmp_path, script)).run("hi", lambda kind, text: seen.append(text))
+    assert result.ok
+    assert "Xong r\u1ed3i fen \U0001f5ff" in seen
+
+
+def test_agent_command_is_found_on_the_path(tmp_path, monkeypatch):
+    command = fake_agent(tmp_path, 'say(type="result", is_error=False)\n')
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    assert ClaudeAgent(tmp_path, [Path(command[0]).name]).run("hi", lambda *_: None).ok
 
 
 def test_prompt_starting_with_a_dash_is_not_an_option(tmp_path):

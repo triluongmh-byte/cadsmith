@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -126,8 +127,12 @@ class ClaudeAgent:
     def run(self, prompt: str, emit: Callable[[str, str], None]) -> AgentResult:
         self.stopped = False
         try:
-            process = subprocess.Popen(self._arguments(), cwd=self.workspace, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, text=True, bufsize=1)
+            arguments = self._arguments()
+            # On Windows an npm install is claude.cmd, which Popen finds only by its full path.
+            arguments[0] = shutil.which(arguments[0]) or arguments[0]
+            process = subprocess.Popen(arguments, cwd=self.workspace, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                                       bufsize=1)
         except FileNotFoundError:
             return AgentResult(False, f"could not find the {self.command[0]!r} command; install and sign in to Claude Code")
         with self._lock:

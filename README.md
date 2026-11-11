@@ -21,6 +21,19 @@ uv sync
 uv run cadsmith --help
 ```
 
+On Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # installs uv
+git clone https://github.com/triluongmh-byte/cadsmith.git
+cd cadsmith
+uv sync --python 3.12
+uv run cadsmith web
+```
+
+The studio's agent is [Claude Code](https://claude.com/claude-code): install it and sign in once with
+`claude` before you chat.
+
 ## Use it
 
 ```sh
