@@ -57,6 +57,11 @@ diameters, and an isometric view:
 
 ![Drawing sheet for one printed part](docs/images/drawing-part.png)
 
+**Attach files.** Paste a screenshot into the chat, drop files on the page, or use the paper clip. The agent
+looks at pictures, so you can mark a problem on a screenshot or show a photo of a part to match. An STL,
+such as a figure sculpted in Blender or made by an image-to-3D tool, becomes a solid the agent can size,
+put on a base, or cut a peg hole into.
+
 Other controls: **D** shows or hides the overall sizes, the compass in the lower left turns the view to
 look along an axis, the eye button shows through parts, and the Plates page shows how parts are laid
 out on the print bed.
@@ -93,6 +98,15 @@ clearances are in `cadsmith.cadlib`, along with common bought parts: SG90, MG90S
 their cutouts, boards such as the Pi Pico, Arduino Nano and ESP32 DevKit, 18650 cells, screws and nuts.
 Their sizes are nominal, so measure your own parts before a tight fit.
 
+An existing mesh comes in with `import_stl`. It is thinned to 5000 triangles (`detail=` changes that),
+sewn into a solid and cached next to the STL, so it can be moved, scaled, unioned and cut:
+
+```python
+from cadsmith.cadlib.meshes import import_stl
+
+figure = import_stl("uploads/cat.stl", size=60)   # longest side 60 mm, centred, standing on Z=0
+```
+
 ## What is checked
 
 **Thin walls.** The whole surface is sampled about every 1 mm and each point measures the distance
@@ -116,6 +130,8 @@ zone is avoided, and each plate is named, such as `desk 1 big`.
 
 - The command line starts from a `.py` file; describing a part in words happens in the studio.
 - Short bridges count as overhang, so holes in vertical walls report a small overhang area.
+- An imported mesh must be closed. One with holes in its surface is refused; repair it first, for example
+  with Fix model in Bambu Studio. Drawings of meshes show outlines and creases only, without hidden lines.
 - Fits are checked at rest. Motion, snap deflection and press fits (interference) are not modelled.
 - Project files are verified by slicing them with the BambuStudio command line. They set the printer
   and default PLA presets; review the settings in BambuStudio before you print.

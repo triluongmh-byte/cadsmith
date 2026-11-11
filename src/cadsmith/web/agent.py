@@ -31,7 +31,13 @@ in. Do not mention builds or checks still to come.
 
 A message may end with notes the user pinned on the model. Each names a part, a point on its surface in model
 millimetres and the way that face points. Make the change the note asks for at that spot: find the feature in
-model.py from the part and the coordinates, change it, and leave the rest of the model alone."""
+model.py from the part and the coordinates, change it, and leave the rest of the model alone.
+
+A message may also list files the user attached, under uploads/. Read a picture to see it: it may be a screenshot
+of this model with a problem marked, a sketch, or a photo of a real part to match. An STL is a ready-made mesh,
+such as a sculpted figure: load it with import_stl from cadsmith.cadlib.meshes, size it to what the user asks,
+and build the printed parts around it (a base, a peg, a mount). Never Read an STL. A mesh can only be moved,
+scaled, unioned and cut, so keep its own shape and do the design work in the parts you build."""
 GUIDE_FILE = Path(__file__).parent / "design_guide.md"
 CADLIB_DIR = Path(__file__).parent.parent / "cadlib"
 

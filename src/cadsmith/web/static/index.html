@@ -67,6 +67,16 @@ nav button.on{background:var(--on);color:var(--onText);font-weight:600}
 .note{display:flex;align-items:flex-start;gap:7px;font-size:12px;padding:5px 6px;border-radius:7px;background:var(--btn)}
 .note .no{flex:none;width:18px;height:18px;border-radius:9px;background:var(--orange);color:#1a1108;font:700 11px/18px Inter,system-ui,sans-serif;text-align:center}
 .note .tx{flex:1;min-width:0;word-break:break-word}.note .tx small{display:block;font:10.5px var(--mono);color:var(--dim)}
+.input{position:relative}.input.drop{border-color:var(--orange);background:rgba(240,138,60,.08)}
+.inrow{display:flex;align-items:flex-end;gap:6px}.inrow textarea{flex:1}
+.clip{flex:none;width:30px;height:30px;border-radius:8px;border:0;background:transparent;color:var(--dim);display:grid;place-items:center;cursor:pointer}
+.atts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}.atts:empty{display:none}
+.att{display:flex;align-items:center;gap:7px;max-width:100%;padding:4px 6px 4px 4px;border-radius:8px;background:var(--btn);font-size:12px}
+.att img,.att .stl{width:34px;height:34px;border-radius:5px;object-fit:cover;flex:none;background:#0b0e13}
+.att .stl{display:grid;place-items:center;font:700 9.5px var(--mono);color:var(--orange)}
+.att .tx{min-width:0;overflow:hidden}.att .tx b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}.att .tx small{display:block;font:10.5px var(--mono);color:var(--dim)}.att .tx small.warn{color:var(--warn)}
+.att button{border:0;background:none;color:var(--dim);cursor:pointer;font-size:14px}
+.ev .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.ev .thumbs img{max-width:160px;max-height:110px;border-radius:6px;border:1px solid var(--line2);background:#0b0e13}
 .note button{flex:none;border:0;background:none;color:var(--dim);cursor:pointer;padding:0 3px;font-size:14px;line-height:18px}
 .plate h5{margin:0 0 8px;font-size:13px;font-weight:600}.plate svg{display:block}
 aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -150,7 +160,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
     <div class="agenthead"><b>agent</b><span class="st" id="agentstate">idle</span><span class="grow"></span><button class="btn hv stop" id="stop" hidden>Stop</button></div>
     <div class="log" id="log"></div>
     <div class="working" id="working"></div>
-    <div class="input"><div class="notes" id="notes" aria-label="Notes to send"></div><label for="text" hidden>Message the agent</label><textarea id="text" placeholder="Describe the part or the change. Enter to send, Shift+Enter for a new line."></textarea></div>
+    <div class="input"><div class="notes" id="notes" aria-label="Notes to send"></div><div class="atts" id="atts" aria-label="Attached files"></div><div class="inrow"><button class="clip hv" id="clip" title="Attach a picture or an STL (or paste a screenshot)" aria-label="Attach a file"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5l-8.6 8.6a5 5 0 01-7.1-7.1l8.6-8.6a3.4 3.4 0 014.8 4.8l-8.6 8.6a1.7 1.7 0 01-2.4-2.4l7.9-7.9"/></svg></button><input type="file" id="file" accept=".png,.jpg,.jpeg,.gif,.webp,.stl,image/*" multiple hidden><label for="text" hidden>Message the agent</label><textarea id="text" placeholder="Describe the part or the change. Enter to send, Shift+Enter for a new line."></textarea></div></div>
   </aside>
 </div>
 <dialog id="dlg"><form method="dialog" id="dform"><h3 id="dtitle"></h3><p id="dtext"></p><input id="dinput" maxlength="60" autocomplete="off" aria-label="Project name"><div class="derr" id="derr"></div><div class="dfoot"><button class="btn hv" type="button" id="dcancel">Cancel</button><button class="btn primary" id="dok" type="submit"></button></div></form></dialog>
@@ -311,13 +321,34 @@ function renderEmpty(){const box=$("empty");if(report){box.style.display="none";
 let state={},seq=0,busy=false,lastKey="";
 function renderStatus(){const p=$("status"),r=report;if(busy){p.className="pill run";p.textContent="working…";return}if(state.error){p.className="pill bad";p.textContent="last change failed";return}if(!r){p.className="pill";p.textContent=state.empty?"empty":"building";return}const warn=r.parts.reduce((n,x)=>n+x.check.warnings.length,0);p.className="pill "+(r.passed?"ok":"bad");p.textContent=r.passed?`v${r.version} · checks passed${warn?` · ${warn} warning${warn>1?"s":""}`:""}`:`v${r.version} · checks failed`;p.title="Measured on the model. Not printed yet."}
 const LABEL={tool:"Ran",build:"Build",done:"Done",note:"Check",error:"Error"};
-function addEvent(e){const box=$("log"),stick=box.scrollHeight-box.scrollTop-box.clientHeight<60,d=el("div","ev "+e.kind);if(LABEL[e.kind]){d.append(el("b","",LABEL[e.kind]+" "),document.createTextNode(e.text))}else d.textContent=e.text;box.append(d);if(stick)box.scrollTop=box.scrollHeight}
+function addEvent(e){const box=$("log"),stick=box.scrollHeight-box.scrollTop-box.clientHeight<60,d=el("div","ev "+e.kind);if(LABEL[e.kind]){d.append(el("b","",LABEL[e.kind]+" "),document.createTextNode(e.text))}else d.textContent=e.text;if(e.kind==="user"){const pics=[...new Set([...e.text.matchAll(/uploads\/([A-Za-z0-9_-]+\.(?:png|jpe?g|gif|webp))/g)].map(m=>m[1]))];if(pics.length){const row=el("div","thumbs");pics.forEach(n=>{const i=el("img");i.src=`${BASE}/uploads/${n}`;i.alt=n;i.loading="lazy";row.append(i)});d.append(row)}}box.append(d);if(stick)box.scrollTop=box.scrollHeight}
 async function poll(){try{const res=await fetch(`${BASE}/api/state?since=${seq}`);if(res.status===404){location.href="/";return}state=await res.json();state.events.forEach(addEvent);seq=state.seq;busy=state.status!=="idle";
  $("agentstate").textContent=busy?"working":"idle";$("stop").hidden=!busy;$("working").textContent=busy?`● Working (${state.elapsed}s · esc to interrupt)`:"";$("project").textContent=state.name;document.title=`${state.name} · cadsmith`;
  const a=$("alert");if(state.error){a.hidden=false;a.textContent=(report?"The latest change did not build. Showing the last good version.\n":"The model did not build.\n")+state.error.trim().split("\n").slice(-2).join("\n")}else a.hidden=true;
  if(state.report){report=state.report;if(report.version!==loaded)await loadModel(report);const key=JSON.stringify([report.version,tab,openPart,state.name]);if(key!==lastKey){lastKey=key;render();renderChips(report)}}applyChrome();renderEmpty();renderStatus()}catch(e){$("agentstate").textContent="disconnected"}setTimeout(poll,800)}
-$("text").onkeydown=async e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();const t=$("text").value.trim();if((!t&&!notes.length)||busy)return;const message=notesMessage(t);$("text").value="";const r=await post(`${BASE}/api/chat`,{message});if(r.ok){clearNotes();setNoting(false)}else{$("text").value=t;addEvent({kind:"error",text:r.data.error||"could not send"})}}};
+$("text").onkeydown=async e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();const t=$("text").value.trim();if((!t&&!notes.length&&!attachments.length)||busy||uploading)return;const message=attachMessage(notesMessage(t||(attachments.length&&!notes.length?"Here are the files.":"")));$("text").value="";const r=await post(`${BASE}/api/chat`,{message});if(r.ok){clearNotes();setNoting(false);attachments.length=0;renderAttachments()}else{$("text").value=t;addEvent({kind:"error",text:r.data.error||"could not send"})}}};
 const stop=()=>post(`${BASE}/api/stop`);$("stop").onclick=stop;addEventListener("keydown",e=>{if(e.key!=="Escape"||$("dlg").open)return;if(editing){closeNoteEditor();return}if(ruling&&page==="3d"&&undoRuling())return;if(busy)stop()});
+
+/* attachments: pictures and STL meshes go to the project's uploads folder and ride along with the next message */
+const attachments=[];let uploading=0;
+const ATTACHABLE=/\.(png|jpe?g|gif|webp|stl)$/i;
+function renderAttachments(){const box=$("atts");box.replaceChildren();attachments.forEach(a=>{const row=el("div","att"),tx=el("span","tx"),x=el("button","","×");x.title="Remove";x.setAttribute("aria-label",`Remove ${a.name}`);x.onclick=()=>{attachments.splice(attachments.indexOf(a),1);renderAttachments()};
+ if(a.kind==="image"){const i=el("img");i.src=`${BASE}/uploads/${a.path.split("/").pop()}`;i.alt="";row.append(i)}else row.append(el("span","stl","STL"));
+ tx.append(el("b","",a.name));if(a.kind==="mesh"){tx.append(el("small","",`${a.size.map(v=>Math.round(v)).join(" × ")} mm · ${a.triangles.toLocaleString()} triangles`));if(a.open_edges)tx.append(el("small","warn",`${a.open_edges} open edges: repair before printing`))}else tx.append(el("small","",`${Math.max(1,Math.round(a.bytes/1024))} KB picture`));
+ row.append(tx,x);box.append(row)});if(uploading)box.append(el("div","att",`uploading ${uploading}…`))}
+function attachMessage(text){if(!attachments.length)return text;const lines=attachments.map(a=>a.kind==="image"?`- ${a.path}: a picture. Read it to see it.`:`- ${a.path}: an STL mesh, ${a.size.map(v=>v.toFixed(1)).join(" x ")} mm, ${a.triangles} triangles${a.open_edges?`, with ${a.open_edges} open edges (not closed)`:""}. Load it with import_stl("${a.path}").`);
+ return`${text}\n\nAttached files (in the project folder):\n${lines.join("\n")}`}
+async function uploadFile(file,name){name=name||file.name;if(!ATTACHABLE.test(name)){addEvent({kind:"error",text:`${name}: attach a picture (PNG, JPG, GIF, WebP) or an STL`});return}
+ uploading++;renderAttachments();try{const r=await fetch(`${BASE}/api/upload`,{method:"POST",headers:{"Content-Type":"application/octet-stream","X-Filename":encodeURIComponent(name)},body:file}),data=await r.json().catch(()=>({}));
+ if(r.ok)attachments.push(data);else addEvent({kind:"error",text:`${name}: ${data.error||"could not upload"}`})}catch(e){addEvent({kind:"error",text:`${name}: could not upload`})}finally{uploading--;renderAttachments()}}
+$("clip").onclick=()=>$("file").click();
+$("file").onchange=()=>{[...$("file").files].forEach(f=>uploadFile(f));$("file").value=""};
+$("text").addEventListener("paste",e=>{const files=[...(e.clipboardData?.files||[])];if(!files.length)return;e.preventDefault();const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");files.forEach((f,i)=>{const ext=(f.type.split("/")[1]||"png").replace("jpeg","jpg");uploadFile(f,ATTACHABLE.test(f.name)&&f.name!=="image.png"?f.name:`screenshot-${stamp}${i?"-"+i:""}.${ext}`)})});
+const inputBox=document.querySelector(".input");let dragDepth=0;
+addEventListener("dragenter",e=>{if(e.dataTransfer?.types.includes("Files")){dragDepth++;inputBox.classList.add("drop")}});
+addEventListener("dragleave",()=>{if(--dragDepth<=0){dragDepth=0;inputBox.classList.remove("drop")}});
+addEventListener("dragover",e=>{if(e.dataTransfer?.types.includes("Files"))e.preventDefault()});
+addEventListener("drop",e=>{if(!e.dataTransfer?.files.length)return;e.preventDefault();dragDepth=0;inputBox.classList.remove("drop");[...e.dataTransfer.files].forEach(f=>uploadFile(f))});
 
 /* projects */
 async function openMenu(){const m=$("menu");if(!m.hidden){m.hidden=true;$("switch").setAttribute("aria-expanded","false");return}const{projects}=await (await fetch("/api/projects")).json();m.replaceChildren();projects.forEach(p=>{const a=el("a",p.id===projectId?"on":"");a.href=`/p/${p.id}/`;a.append(el("span","dot "+(p.status!=="idle"?"run":p.passed?"ok":p.passed===false?"bad":"")),el("span","n",p.name),el("span","v",p.version?`v${p.version}`:"new"));m.append(a)});m.hidden=false;$("switch").setAttribute("aria-expanded","true")}

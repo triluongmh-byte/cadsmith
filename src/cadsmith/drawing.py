@@ -14,10 +14,13 @@ from datetime import date
 from html import escape
 
 import cadquery as cq
+import numpy as np
 from OCP.BRepLib import BRepLib
 from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
 from OCP.HLRAlgo import HLRAlgo_Projector
 from OCP.HLRBRep import HLRBRep_Algo, HLRBRep_HLRToShape
+
+from cadsmith.mesh import tessellate
 
 SHEET_W, SHEET_H = 420.0, 297.0
 MARGIN = 10.0
@@ -33,6 +36,10 @@ VIEWS = {
     "right": ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
     "iso": ((1.0, -1.0, 1.0), (1.0, 1.0, 0.0)),
 }
+#: Above this many faces, such as an imported mesh, exact hidden-line removal takes minutes; such shapes
+#: are drawn from their triangles instead.
+HEAVY_FACES = 1500
+CREASE_DEG = 35.0
 MAX_HOLE_NOTES = 6
 MAX_LIST_ROWS = 24
 MIN_HOLE_RADIUS = 0.4
@@ -83,6 +90,8 @@ def _edges(compound) -> list[cq.Edge]:
 
 def project(shape: cq.Shape, name: str, hidden: bool = True) -> View:
     """Hidden-line projection of ``shape`` along one of :data:`VIEWS`."""
+    if len(shape.Faces()) > HEAVY_FACES:
+        return project_mesh(shape, name)
     toward, right = VIEWS[name]
     algo = HLRBRep_Algo()
     algo.Add(shape.wrapped)
@@ -104,6 +113,89 @@ def project(shape: cq.Shape, name: str, hidden: bool = True) -> View:
                 line = _polyline(edge)
                 if not (len(line) == 2 and _covered(line, straight)):
                     view.hidden.append(line)
+    return view
+
+
+def _depth_buffer(u, v, w, faces, res, origin, shape):
+    """The nearest depth (largest w) per cell, over the given triangles."""
+    zbuf = np.full(shape, -np.inf)
+    cu, cv = (u - origin[0]) / res, (v - origin[1]) / res
+    for a, b, c in faces:
+        x0, x1 = int(max(min(cu[a], cu[b], cu[c]), 0)), int(min(max(cu[a], cu[b], cu[c]) + 1, shape[1] - 1))
+        y0, y1 = int(max(min(cv[a], cv[b], cv[c]), 0)), int(min(max(cv[a], cv[b], cv[c]) + 1, shape[0] - 1))
+        if x1 < x0 or y1 < y0:
+            continue
+        xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        d = (cv[b] - cv[c]) * (cu[a] - cu[c]) + (cu[c] - cu[b]) * (cv[a] - cv[c])
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((cv[b] - cv[c]) * (xs - cu[c]) + (cu[c] - cu[b]) * (ys - cv[c])) / d
+        l2 = ((cv[c] - cv[a]) * (xs - cu[c]) + (cu[a] - cu[c]) * (ys - cv[c])) / d
+        l3 = 1 - l1 - l2
+        inside = (l1 >= -1e-6) & (l2 >= -1e-6) & (l3 >= -1e-6)
+        if not inside.any():
+            continue
+        depth = l1 * w[a] + l2 * w[b] + l3 * w[c]
+        cell = zbuf[y0:y1 + 1, x0:x1 + 1]
+        np.maximum(cell, np.where(inside, depth, -np.inf), out=cell)
+    return zbuf
+
+
+def project_mesh(shape: cq.Shape, name: str) -> View:
+    """Outlines and creases of a many-faced shape, with what lies behind nearer triangles left out."""
+    mesh = tessellate(shape, 0.05, 0.25)
+    toward, right = (np.array(d, dtype=float) / np.linalg.norm(d) for d in VIEWS[name])
+    up = np.cross(toward, right)
+    points, faces = mesh.vertices, mesh.faces
+    u, v, w = points @ right, points @ up, points @ toward
+    normals = mesh.normals
+    front = normals @ toward > 1e-9
+    edges = np.sort(np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
+    owner = np.tile(np.arange(len(faces)), 3)
+    order = np.lexsort((edges[:, 1], edges[:, 0]))
+    edges, owner = edges[order], owner[order]
+    same = np.all(edges[1:] == edges[:-1], axis=1)
+    pairs = np.flatnonzero(same)  # edge i and i + 1 are the two sides of one mesh edge
+    first, second = owner[pairs], owner[pairs + 1]
+    cos_crease = math.cos(math.radians(CREASE_DEG))
+    keep = (front[first] != front[second]) | (
+        (np.einsum("ij,ij->i", normals[first], normals[second]) < cos_crease) & (front[first] | front[second]))
+    chosen = edges[pairs][keep]
+    single = np.ones(len(edges), dtype=bool)
+    single[pairs] = single[pairs + 1] = False
+    chosen = np.concatenate([chosen, edges[single]]) if single.any() else chosen
+
+    span = max(u.max() - u.min(), v.max() - v.min(), 1e-6)
+    res = max(span / 1400.0, 0.02)
+    origin = (u.min() - 2 * res, v.min() - 2 * res)
+    grid = (int((v.max() - origin[1]) / res) + 3, int((u.max() - origin[0]) / res) + 3)
+    zbuf = _depth_buffer(u, v, w, faces[front], res, origin, grid)
+    # an edge counts as hidden only when every neighbouring cell is nearer, so outlines at grazing angles hold
+    padded = np.pad(zbuf, 1, constant_values=-np.inf)
+    zbuf = np.min([padded[1 + dy:1 + dy + grid[0], 1 + dx:1 + dx + grid[1]] for dy in (-1, 0, 1) for dx in (-1, 0, 1)],
+                  axis=0)
+    tolerance = max(3 * res, 0.05)
+
+    view = View()
+    for a, b in chosen:
+        length = math.hypot(u[b] - u[a], v[b] - v[a])
+        count = max(2, int(length / (res * 1.5)) + 1)
+        t = np.linspace(0.0, 1.0, count)
+        su, sv, sw = u[a] + (u[b] - u[a]) * t, v[a] + (v[b] - v[a]) * t, w[a] + (w[b] - w[a]) * t
+        ix = np.clip(((su - origin[0]) / res).astype(int), 0, grid[1] - 1)
+        iy = np.clip(((sv - origin[1]) / res).astype(int), 0, grid[0] - 1)
+        seen = sw >= zbuf[iy, ix] - tolerance
+        if seen.all():
+            view.visible.append([(float(u[a]), float(v[a])), (float(u[b]), float(v[b]))])
+            continue
+        start = None
+        for index, flag in enumerate(list(seen) + [False]):
+            if flag and start is None:
+                start = index
+            elif not flag and start is not None:
+                if index - start >= 2:
+                    view.visible.append([(float(su[start]), float(sv[start])), (float(su[index - 1]), float(sv[index - 1]))])
+                start = None
     return view
 
 

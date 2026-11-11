@@ -19,14 +19,22 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
+from cadsmith.stl import StlError, describe_stl
 from cadsmith.web.agent import ClaudeAgent
 from cadsmith.web.pipeline import MODEL_FILE, REPORT_FILE
 
 logger = logging.getLogger("cadsmith.web")
 STATIC = Path(__file__).parent / "static"
 MAX_BODY = 64 * 1024
+MAX_UPLOAD = 100 * 1024 * 1024
+UPLOAD_DIR = "uploads"
+#: Picture formats the agent can look at, by the bytes they start with.
+IMAGE_MAGIC = {".png": (b"\x89PNG\r\n\x1a\n",), ".jpg": (b"\xff\xd8\xff",), ".jpeg": (b"\xff\xd8\xff",),
+               ".gif": (b"GIF87a", b"GIF89a"), ".webp": (b"RIFF",)}
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+               ".webp": "image/webp"}
 MAX_MESSAGE = 8000
 MAX_REPAIRS = 3
 MAX_REVIEWS = 2
@@ -75,6 +83,33 @@ def send_gelf(address: str, payload: dict) -> None:
                **{f"_{key}": value for key, value in payload.items()}}
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(json.dumps(message).encode()[:8000], (host, int(port)))
+
+
+def save_upload(workspace: Path, filename: str, data: bytes) -> dict:
+    """Keep a picture or an STL in the project's uploads folder; returns what the chat says about it."""
+    original = Path(filename or "").name
+    suffix = Path(original).suffix.lower()
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(original).stem).strip("-")[:40] or "upload"
+    if suffix == ".stl":
+        try:
+            info = describe_stl(data).to_dict()
+        except StlError as problem:
+            raise ProjectError(str(problem)) from None
+        kind = "mesh"
+    elif suffix in IMAGE_MAGIC:
+        if not data.startswith(IMAGE_MAGIC[suffix]) or (suffix == ".webp" and data[8:12] != b"WEBP"):
+            raise ProjectError(f"that file is not a {suffix[1:].upper()} picture")
+        info, kind = {}, "image"
+    else:
+        raise ProjectError("send a picture (PNG, JPG, GIF, WebP) or an STL mesh")
+    folder = workspace / UPLOAD_DIR
+    folder.mkdir(exist_ok=True)
+    target, count = folder / f"{stem}{suffix}", 1
+    while target.exists():
+        count += 1
+        target = folder / f"{stem}-{count}{suffix}"
+    target.write_bytes(data)
+    return {"path": f"{UPLOAD_DIR}/{target.name}", "name": original, "kind": kind, "bytes": len(data), **info}
 
 
 def log_post(path: str, request, response, error) -> None:
@@ -473,6 +508,12 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 except ValueError:
                     return self._json(400, {"error": "since must be a number"})
                 return self._json(200, studio.state(since))
+            picture = re.fullmatch(r"/uploads/([A-Za-z0-9_-]+\.[a-z]+)", rest)
+            if picture:
+                path = studio.workspace / UPLOAD_DIR / picture.group(1)
+                if path.suffix in IMAGE_TYPES and path.is_file():
+                    return self._send(200, path.read_bytes(), IMAGE_TYPES[path.suffix], sandbox=True)
+                return self._json(404, {"error": "not found"})
             found = re.fullmatch(r"/files/(v\d+)/([A-Za-z0-9_.\- ]+)", rest.replace("%20", " "))
             if found:
                 path = (studio.builds / found.group(1) / found.group(2)).resolve()
@@ -510,6 +551,19 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
             try:
                 if not self._trusted():
                     code, response = 403, {"error": "forbidden"}
+                    return
+                upload = re.fullmatch(rf"/p/({ID_PATTERN})/api/upload", self.path)
+                if upload and self.headers.get_content_type() == "application/octet-stream":
+                    length = int(self.headers.get("Content-Length") or 0)
+                    name = unquote(self.headers.get("X-Filename", ""))
+                    request = {"file": name, "bytes": length}  # the log keeps what came, not the bytes
+                    studio = projects.get(upload.group(1))
+                    if studio is None:
+                        code, response = 404, {"error": "not found"}
+                    elif length <= 0 or length > MAX_UPLOAD:
+                        code, response = 413, {"error": f"send a file of up to {MAX_UPLOAD // (1024 * 1024)} MB"}
+                    else:
+                        code, response = 201, save_upload(studio.workspace, name, self.rfile.read(length))
                     return
                 if self.headers.get_content_type() != "application/json":
                     code, response = 415, {"error": "send JSON"}

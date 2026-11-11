@@ -585,6 +585,50 @@ def test_prompt_carries_the_guide_and_real_helper_signatures():
     assert "notes the user pinned on the model" in prompt
 
 
+def upload(url, name, data):
+    request = urllib.request.Request(f"{url}/api/upload", data=data, method="POST",
+                                     headers={"Content-Type": "application/octet-stream", "X-Filename": name})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as error:
+        return error.code, json.load(error)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 40
+
+
+def test_upload_a_picture_and_serve_it_back(running):
+    studio, url = running()
+    code, body = upload(url, "my%20shot.png", PNG)
+    assert code == 201 and body["path"] == "uploads/my-shot.png" and body["kind"] == "image"
+    assert upload(url, "my%20shot.png", PNG)[1]["path"] == "uploads/my-shot-2.png"
+    code, data = get(f"{url}/uploads/my-shot.png")
+    assert code == 200 and data == PNG
+
+
+def test_upload_an_stl_reports_its_size(running, tmp_path):
+    studio, url = running()
+    path = tmp_path / "b.stl"
+    import cadquery as cq
+    cq.Workplane().box(10, 20, 30).val().exportStl(str(path))
+    code, body = upload(url, "b.stl", path.read_bytes())
+    assert code == 201 and body["kind"] == "mesh" and body["size"] == [10, 20, 30] and body["open_edges"] == 0
+    assert (studio.workspace / "uploads" / "b.stl").is_file()
+
+
+def test_upload_rejects_wrong_files(running):
+    _, url = running()
+    assert upload(url, "notes.txt", b"hello")[0] == 400
+    assert upload(url, "fake.png", b"not a png at all")[0] == 400
+    assert upload(url, "junk.stl", b"junk")[0] == 400
+    assert get(f"{url}/uploads/../session.json")[0] == 404
+
+
+def test_prompt_explains_attachments():
+    assert "import_stl" in agent_module.system_prompt() and "Never Read an STL" in agent_module.system_prompt()
+
+
 def test_studio_page_has_the_note_tool(running):
     _, url = running()
     page = get(f"{url}/")[1].decode()
