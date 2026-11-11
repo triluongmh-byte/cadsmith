@@ -26,8 +26,10 @@ def fake_agent(tmp_path, script: str) -> list[str]:
     """An executable that stands in for the claude command line."""
     path = tmp_path / "fake_claude.py"
     path.write_text(f"#!{sys.executable}\nimport json, sys, pathlib, time\nprompt = sys.stdin.read()\n"
-                    "def say(**kw):\n    print(json.dumps(kw), flush=True)\n" + script)
+                    "def say(**kw):\n    print(json.dumps(kw), flush=True)\n" + script, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    if sys.platform == "win32":
+        return [sys.executable, str(path)]  # Windows cannot run a script by its shebang
     return [str(path)]
 
 
@@ -157,13 +159,17 @@ def test_agent_reads_its_output_as_utf8(tmp_path):
 def test_agent_command_is_found_on_the_path(tmp_path, monkeypatch):
     command = fake_agent(tmp_path, 'say(type="result", is_error=False)\n')
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    if sys.platform == "win32":  # stand in for npm's claude.cmd, which Popen finds only by its full path
+        (tmp_path / "fake_claude.cmd").write_text(f'@"{sys.executable}" "%~dp0fake_claude.py"\n')
+        command = ["fake_claude"]
+    monkeypatch.setattr(agent_module, "system_prompt", lambda: "short")
     assert ClaudeAgent(tmp_path, [Path(command[0]).name]).run("hi", lambda *_: None).ok
 
 
 def test_prompt_starting_with_a_dash_is_not_an_option(tmp_path):
-    command = fake_agent(tmp_path, 'pathlib.Path("seen.txt").write_text(prompt + " | " + " ".join(sys.argv[1:]))\nsay(type="result", is_error=False)\n')
+    command = fake_agent(tmp_path, 'pathlib.Path("seen.txt").write_text(prompt + " | " + " ".join(sys.argv[1:]), encoding="utf-8")\nsay(type="result", is_error=False)\n')
     ClaudeAgent(tmp_path, command).run("--dangerous", lambda *_: None)
-    prompt, _, arguments = (tmp_path / "seen.txt").read_text().partition(" | ")
+    prompt, _, arguments = (tmp_path / "seen.txt").read_text(encoding="utf-8").partition(" | ")
     assert prompt == "--dangerous"
     assert "--dangerous" not in arguments.split()
 
