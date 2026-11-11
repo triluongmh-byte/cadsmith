@@ -582,6 +582,13 @@ def test_prompt_carries_the_guide_and_real_helper_signatures():
     assert "Object or machine" in prompt
     assert "servo_cutout(kind: str='SG90'" in prompt and "soften_edges(" in prompt
     assert "SERVO_TABLE" in prompt
+    assert "notes the user pinned on the model" in prompt
+
+
+def test_studio_page_has_the_note_tool(running):
+    _, url = running()
+    page = get(f"{url}/")[1].decode()
+    assert 'id="notetool"' in page and "Notes pinned on the model" in page
 
 
 def test_a_turn_that_runs_out_of_time_says_so(tmp_path, monkeypatch):
