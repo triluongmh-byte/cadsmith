@@ -42,11 +42,11 @@ nav button.on{background:var(--on);color:var(--onText);font-weight:600}
 .tools hr{width:100%;border:0;height:1px;background:#263044;margin:2px 0}
 .chips{position:absolute;top:14px;right:14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;z-index:5}
 .chips span{font-size:12px;padding:6px 10px;border-radius:8px;background:rgba(17,21,29,.92);border:1px solid #263044;color:#9aa3b2}.chips b{font-weight:600;color:var(--text)}
-.hint{position:absolute;left:16px;right:16px;bottom:10px;display:flex;justify-content:space-between;font:11px var(--mono);color:var(--dim);gap:8px;z-index:5;pointer-events:none}
+.hint{position:absolute;left:128px;right:16px;bottom:10px;display:flex;justify-content:space-between;font:11px var(--mono);color:var(--dim);gap:8px;z-index:5;pointer-events:none}
 .hint .synced{color:var(--ok)}
 .alert{position:absolute;left:72px;top:14px;max-width:min(560px,60%);padding:9px 12px;border-radius:10px;background:var(--badBg);color:#ffc4b8;border:1px solid #5b2c22;font-size:12px;white-space:pre-wrap;z-index:6;max-height:130px;overflow:auto}
 .empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--soft);text-align:center;padding:24px;font-size:15px;line-height:1.6}.empty small{display:block;color:var(--dim);font-size:13px}
-.gizmo{position:absolute;right:14px;bottom:34px;width:104px;height:104px;z-index:5}.gizmo g[data-v]{cursor:pointer}.gizmo text{font:700 11px Inter,system-ui,sans-serif;text-anchor:middle;dominant-baseline:central;fill:#0d1016;pointer-events:none}.gizmo circle{transition:r .1s}.gizmo g[data-v]:hover circle{r:11.5}
+.gizmo{position:absolute;left:14px;bottom:30px;width:104px;height:104px;z-index:5}.gizmo g[data-v]{cursor:pointer}.gizmo text{font:700 11px Inter,system-ui,sans-serif;text-anchor:middle;dominant-baseline:central;fill:#0d1016;pointer-events:none}.gizmo circle{transition:r .1s}.gizmo g[data-v]:hover circle{r:11.5}
 .plates{position:absolute;inset:0;padding:22px;overflow:auto;display:none;flex-wrap:wrap;gap:24px;align-content:flex-start;justify-content:center;z-index:4}
 .sheets{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:#0f141d}
 .sheetbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
@@ -56,6 +56,7 @@ nav button.on{background:var(--on);color:var(--onText);font-weight:600}
 .paper img{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.55);user-select:none;-webkit-user-drag:none}
 .rlabel{position:absolute;z-index:6;transform:translate(-50%,-50%);pointer-events:none;padding:4px 8px;border-radius:7px;background:rgba(17,21,29,.94);border:1px solid var(--orange);color:#fff;font:600 12px var(--mono);white-space:nowrap;text-align:center}
 .rlabel small{display:block;font:500 10px var(--mono);color:var(--soft)}
+.dimlabel{position:absolute;z-index:5;transform:translate(-50%,-50%);pointer-events:none;padding:1px 6px;border-radius:5px;background:rgba(13,16,22,.82);color:#e6e9ef;font:600 11.5px var(--mono);white-space:nowrap}
 .view.ruling canvas,.view.noting canvas{cursor:crosshair}
 .pin{position:absolute;z-index:6;transform:translate(-50%,-100%);pointer-events:auto;cursor:default;min-width:22px;height:22px;padding:0 6px;border-radius:11px 11px 11px 2px;background:var(--orange);color:#1a1108;font:700 12px/22px Inter,system-ui,sans-serif;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 .noteedit{position:absolute;z-index:8;width:260px;padding:10px;border-radius:10px;background:var(--panel);border:1px solid var(--orange);box-shadow:0 12px 32px rgba(0,0,0,.55)}
@@ -134,6 +135,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
       <button class="hv" data-v="fit" title="Fit to view" aria-label="Fit to view"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <hr>
       <button class="hv" id="explode" title="Exploded view: pull parts apart" aria-label="Exploded view" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="8" y="8" width="8" height="8" rx="1"/><path d="M3 3l4 4M21 3l-4 4M3 21l4-4M21 21l-4-4"/></svg></button>
+      <button class="hv on" id="dims" title="Overall dimensions (D)" aria-label="Overall dimensions" aria-pressed="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6v12M20 6v12M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3"/></svg></button>
       <button class="hv" id="ruler" title="Ruler: click two points to measure (M)" aria-label="Ruler" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>
       <button class="hv" id="notetool" title="Note: click a spot and say what to change there (N)" aria-label="Note" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.6-6-11a6 6 0 0112 0c0 5.4-6 11-6 11z"/><path d="M12 8v4M10 10h4"/></svg></button>
       <button class="hv" id="xray" title="See-through: show inside" aria-label="See-through" aria-pressed="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -167,19 +169,29 @@ const view=$("view"),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true
 const scene=new THREE.Scene(),camera=new THREE.OrthographicCamera(-1,1,1,-1,-20000,20000);camera.up.set(0,0,1);
 scene.add(new THREE.HemisphereLight(0xffffff,0x59606e,1.35));const sun=new THREE.DirectionalLight(0xffffff,1.25);scene.add(sun);const fill=new THREE.DirectionalLight(0xffffff,.45);fill.position.set(-1,-.6,1.2);scene.add(fill);
 const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
-const group=new THREE.Group();scene.add(group);const meshes={};let span=100,loaded=0,viewName="iso",exploded=false,xray=false,page="3d";
-function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);const a=w/h,s=span*.68;camera.left=-s*a;camera.right=s*a;camera.top=s;camera.bottom=-s;camera.updateProjectionMatrix()}
+const group=new THREE.Group();scene.add(group);const meshes={};let span=100,loaded=0,viewName="iso",exploded=false,xray=false,page="3d",showDims=true;
+function resize(){const w=view.clientWidth,h=view.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);const a=w/h,s=span*(showDims&&!exploded?.82:.68);camera.left=-s*a;camera.right=s*a;camera.top=s;camera.bottom=-s;camera.updateProjectionMatrix()}
 new ResizeObserver(resize).observe(view);
 function bounds(){return new THREE.Box3().setFromObject(group)}
 function setView(name){const box=bounds();if(box.isEmpty())return;const c=box.getCenter(new THREE.Vector3()),size=box.getSize(new THREE.Vector3());span=Math.max(size.x,size.y,size.z,1);
  const dirs={top:[0,-.001,1],bottom:[0,-.001,-1],front:[0,-1,0],back:[0,1,0],right:[1,0,0],left:[-1,0,0],iso:[.75,-1,.65]};const d=name==="fit"?camera.position.clone().sub(controls.target).normalize():new THREE.Vector3(...dirs[name]).normalize();
  camera.position.copy(c).addScaledVector(d,span*3);controls.target.copy(c);camera.zoom=1;resize();controls.update();if(name!=="fit")viewName=name;sizeAxes();renderHint()}
-/* axes: lines through the origin, and a compass in the corner */
+/* axes: a compass in the lower left corner */
 const AXES=[{l:"X",c:0xff5f56,v:[1,0,0],pos:"right",neg:"left"},{l:"Y",c:0x5fd38a,v:[0,1,0],pos:"back",neg:"front"},{l:"Z",c:0x5b8cff,v:[0,0,1],pos:"top",neg:"bottom"}];
-const originAxes=new THREE.Group();originAxes.visible=false;scene.add(originAxes);
-AXES.forEach(a=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(...a.v)]);const line=new THREE.Line(g,new THREE.LineBasicMaterial({color:a.c,transparent:true,opacity:.7}));line.renderOrder=10;originAxes.add(line)});
-/* the triad sits just outside the model's lower corner, so no axis runs through a part */
-function sizeAxes(){const box=bounds();originAxes.visible=!box.isEmpty();if(box.isEmpty())return;originAxes.position.copy(box.min).addScalar(-span*.06);originAxes.scale.setScalar(span*.35)}
+function sizeAxes(){buildDims()}
+/* overall dimensions drawn on the model like the drawing sheets: X along the front, Y along the right, Z up the left */
+const dimGroup=new THREE.Group();scene.add(dimGroup);const dimLabels=[],DIM_COLOR=0xc9d2e0,Y_UP=new THREE.Vector3(0,1,0);
+function clearDims(){[...dimGroup.children].forEach(o=>{dimGroup.remove(o);o.geometry.dispose()});dimLabels.forEach(d=>d.el.remove());dimLabels.length=0}
+function dimension(from1,from2,out,off,value){const V=THREE.Vector3,a=from1.clone().addScaledVector(out,off),b=from2.clone().addScaledVector(out,off),gap=span*.015,ext=span*.025,h=span*.024,
+ mat=new THREE.LineBasicMaterial({color:DIM_COLOR,depthTest:false,transparent:true,opacity:.85}),pts=[a,b,from1.clone().addScaledVector(out,gap),a.clone().addScaledVector(out,ext),from2.clone().addScaledVector(out,gap),b.clone().addScaledVector(out,ext)],
+ lines=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),mat);lines.renderOrder=25;dimGroup.add(lines);
+ [[a,b],[b,a]].forEach(([tip,other])=>{const dir=tip.clone().sub(other).normalize(),cone=new THREE.Mesh(new THREE.ConeGeometry(h*.26,h,12),new THREE.MeshBasicMaterial({color:DIM_COLOR,depthTest:false,transparent:true}));cone.quaternion.setFromUnitVectors(Y_UP,dir);cone.position.copy(tip).addScaledVector(dir,-h/2);cone.renderOrder=25;dimGroup.add(cone)});
+ const el2=el("div","dimlabel",(Math.round(value*10)/10).toString());view.append(el2);dimLabels.push({el:el2,at:a.clone().add(b).multiplyScalar(.5)})}
+function buildDims(){clearDims();if(!showDims||exploded||!Object.keys(meshes).length)return;const box=bounds();if(box.isEmpty())return;const V=THREE.Vector3,n=box.min,x=box.max,off=span*.12,size=box.getSize(new V);
+ dimension(new V(n.x,n.y,n.z),new V(x.x,n.y,n.z),new V(0,-1,0),off,size.x);
+ dimension(new V(x.x,n.y,n.z),new V(x.x,x.y,n.z),new V(1,0,0),off,size.y);
+ dimension(new V(n.x,n.y,n.z),new V(n.x,n.y,x.z),new V(-1,0,0),off,size.z)}
+function setDims(on){showDims=on;$("dims").classList.toggle("on",on);$("dims").setAttribute("aria-pressed",on);buildDims();resize()}
 const SVG="http://www.w3.org/2000/svg",gizmo=$("gizmo"),gizmoItems=[];
 const svgEl=(tag,attrs)=>{const e=document.createElementNS(SVG,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e};
 AXES.forEach(a=>{const color="#"+a.c.toString(16).padStart(6,"0");[1,-1].forEach(sign=>{const line=sign>0?svgEl("line",{stroke:color,"stroke-width":2.5,"stroke-linecap":"round",x1:0,y1:0}):null,g=svgEl("g",{"data-v":sign>0?a.pos:a.neg}),t=svgEl("title",{});t.textContent=`Look from ${sign>0?"+":"-"}${a.l}`;const circle=svgEl("circle",{r:sign>0?10:6,fill:sign>0?color:"#11151d",stroke:color,"stroke-width":sign>0?0:1.5});g.append(t,circle);if(sign>0){const label=svgEl("text",{});label.textContent=a.l;g.append(label)}gizmoItems.push({v:new THREE.Vector3(...a.v).multiplyScalar(sign),line,g,circle,text:g.querySelector("text")})})});
@@ -222,7 +234,7 @@ function clearRulings(){rulings.forEach(r=>{r.label.remove();r.objs.forEach(o=>{
 function dropStart(){if(rulerStart){rulerGroup.remove(rulerStart.dot);rulerStart=null}}
 function undoRuling(){if(rulerStart){dropStart();return true}const r=rulings.pop();if(!r)return false;r.label.remove();r.objs.forEach(o=>rulerGroup.remove(o));return true}
 function setRuler(on){if(on&&noting)setNoting(false);ruling=on;$("ruler").classList.toggle("on",on);$("ruler").setAttribute("aria-pressed",on);view.classList.toggle("ruling",on);hoverDot.visible=false;if(!on)dropStart();renderHint()}
-$("ruler").onclick=()=>setRuler(!ruling);
+$("ruler").onclick=()=>setRuler(!ruling);$("dims").onclick=()=>setDims(!showDims);
 renderer.domElement.addEventListener("pointerdown",e=>{downAt=[e.clientX,e.clientY,e.button]});
 renderer.domElement.addEventListener("pointerup",e=>{if(!(ruling||noting)||!downAt||downAt[2]!==0||Math.hypot(e.clientX-downAt[0],e.clientY-downAt[1])>5)return;const h=pick(e);if(!h)return;
  if(noting){openNoteEditor(h,e);return}
@@ -247,8 +259,8 @@ function clearNotes(){[...notes].forEach(removeNote)}
 function renderNotes(){const box=$("notes");box.replaceChildren();notes.forEach((n,i)=>{n.label.textContent=String(i+1);n.label.title=`${n.part}: ${n.text}`;const row=el("div","note"),tx=el("span","tx",n.text),x=el("button","","×");x.title="Remove note";x.setAttribute("aria-label",`Remove note ${i+1}`);x.onclick=()=>removeNote(n);tx.append(el("small","",`${n.part} · (${n.local.toArray().map(v=>v.toFixed(1)).join(", ")}) mm`));row.append(el("span","no",String(i+1)),tx,x);box.append(row)});$("text").placeholder=notes.length?"Anything else? Enter sends the notes too.":"Describe the part or the change. Enter to send, Shift+Enter for a new line."}
 function notesMessage(text){if(!notes.length)return text;const lines=notes.map((n,i)=>`${i+1}. On "${n.part}" at (${n.local.toArray().map(v=>v.toFixed(1)).join(", ")}) mm, on a face pointing ${facing(n.normal)}: ${n.text}`);
  return`${text||"Change the model at the spots I pinned."}\n\nNotes pinned on the model (v${report?report.version:"?"}; model coordinates in mm):\n${lines.join("\n")}`}
-function placeLabels(){const show=page==="3d";notes.forEach(n=>{pinWorld.copy(n.local);(n.dot.parent||group).localToWorld(pinWorld);const s=toScreen(pinWorld);n.label.style.display=show?"":"none";n.label.style.left=s.x+"px";n.label.style.top=(s.y-6)+"px"});rulings.forEach(r=>{const s=toScreen(r.mid);r.label.style.display=show?"":"none";r.label.style.left=s.x+"px";r.label.style.top=(s.y-16)+"px"})}
-addEventListener("keydown",e=>{if(e.target.closest&&e.target.closest("textarea,input,select,dialog"))return;if(e.metaKey||e.ctrlKey||!report||page!=="3d")return;if(e.key==="m"||e.key==="M")setRuler(!ruling);if(e.key==="n"||e.key==="N")setNoting(!noting)});
+function placeLabels(){const show=page==="3d";dimLabels.forEach(d=>{const s=toScreen(d.at);d.el.style.display=show?"":"none";d.el.style.left=s.x+"px";d.el.style.top=s.y+"px"});notes.forEach(n=>{pinWorld.copy(n.local);(n.dot.parent||group).localToWorld(pinWorld);const s=toScreen(pinWorld);n.label.style.display=show?"":"none";n.label.style.left=s.x+"px";n.label.style.top=(s.y-6)+"px"});rulings.forEach(r=>{const s=toScreen(r.mid);r.label.style.display=show?"":"none";r.label.style.left=s.x+"px";r.label.style.top=(s.y-16)+"px"})}
+addEventListener("keydown",e=>{if(e.target.closest&&e.target.closest("textarea,input,select,dialog"))return;if(e.metaKey||e.ctrlKey||!report||page!=="3d")return;if(e.key==="m"||e.key==="M")setRuler(!ruling);if(e.key==="d"||e.key==="D")setDims(!showDims);if(e.key==="n"||e.key==="N")setNoting(!noting)});
 (function loop(){requestAnimationFrame(loop);controls.update();sun.position.copy(camera.position);drawGizmo();renderer.render(scene,camera);placeLabels()})();
 const loader=new STLLoader();
 async function loadModel(r){const geos=await Promise.all(r.parts.map(p=>loader.loadAsync(`${BASE}/files/v${r.version}/${encodeURIComponent(p.name)}.stl`)));
@@ -272,7 +284,7 @@ function renderStats(r){const box=$("stats"),top=box.scrollTop;box.replaceChildr
 function renderPlates(r){const box=$("plates");box.replaceChildren();const NS="http://www.w3.org/2000/svg",W=r.bed.width,D=r.bed.depth;r.plates.forEach(pl=>{const wrap=el("div","plate");wrap.append(el("h5","",pl.name));const s=document.createElementNS(NS,"svg");s.setAttribute("viewBox",`-2 -2 ${W+4} ${D+4}`);s.setAttribute("width",320);s.setAttribute("height",320);
  const rect=(x,y,w,h,f,st)=>{const e=document.createElementNS(NS,"rect");e.setAttribute("x",x);e.setAttribute("y",D-y-h);e.setAttribute("width",w);e.setAttribute("height",h);e.setAttribute("fill",f);e.setAttribute("stroke",st);e.setAttribute("rx",1);return e};
  s.append(rect(0,0,W,D,"#171c26","#3b4658"));pl.parts.forEach((p,i)=>{s.append(rect(p.x,p.y,p.width,p.depth,hex(i),"#0d1016"));if(p.width>W*.15){const t=document.createElementNS(NS,"text");t.setAttribute("x",p.x+p.width/2);t.setAttribute("y",D-p.y-p.depth/2+3);t.setAttribute("text-anchor","middle");t.setAttribute("font-size",W/28);t.setAttribute("fill","#0d1016");t.textContent=p.name;s.append(t)}});wrap.append(s);box.append(wrap)})}
-function renderHint(){$("hint").firstElementChild.textContent=ruling?"ruler: click two points · corners snap · esc: undo · M: ruler off":noting?"note: click the spot to change · N: note off":"drag: orbit · scroll: zoom · right-drag: pan · M: ruler · N: note";$("synced").replaceChildren(`View: ${viewName.toUpperCase()}`,...(report?[" · ",el("span","synced",`● synced v${report.version}`)]:[]))}
+function renderHint(){$("hint").firstElementChild.textContent=ruling?"ruler: click two points · corners snap · esc: undo · M: ruler off":noting?"note: click the spot to change · N: note off":"drag: orbit · scroll: zoom · right-drag: pan · D: sizes · M: ruler · N: note";$("synced").replaceChildren(`View: ${viewName.toUpperCase()}`,...(report?[" · ",el("span","synced",`● synced v${report.version}`)]:[]))}
 function render(){if(!report)return;const r=report;$("download").href=`${BASE}/files/v${r.version}/plates.3mf`;$("download").download=`${(state.name||"project").replace(/[^\p{L}\p{N} _-]/gu,"")}.3mf`;$("source").href=`${BASE}/files/v${r.version}/model.py`;renderTabs(r);renderStats(r);renderPlates(r);renderSheets(r);renderHint()}
 function showPage(name){page=name;document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x.dataset.page===name));$("plates").style.display=name==="plates"?"flex":"none";$("sheets").hidden=name!=="drawing";if(name!=="3d")hoverDot.visible=false;applyChrome();renderer.domElement.style.visibility=name==="3d"?"visible":"hidden";if(name==="drawing")fitSheet()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showPage(b.dataset.page));
