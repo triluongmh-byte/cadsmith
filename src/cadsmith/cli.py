@@ -10,6 +10,7 @@ from pathlib import Path
 
 from cadsmith import __version__
 from cadsmith.bambu3mf import make_project
+from cadsmith.dotenv import read_env
 from cadsmith.export import export_part
 from cadsmith.fit import check_fits
 from cadsmith.loader import load_model
@@ -92,7 +93,7 @@ def _render(args) -> int:
 def _web(args) -> int:
     from cadsmith.web.server import serve
 
-    serve(Path(args.dir), args.port, args.printer)
+    serve(Path(args.dir), args.port, args.printer, git_token=args.git_token)
     return 0
 
 
@@ -138,8 +139,11 @@ def _parser() -> argparse.ArgumentParser:
     render.set_defaults(run=_render)
 
     web = commands.add_parser("web", help="open the local studio: chat on the right, live preview on the left")
-    web.add_argument("--dir", default=os.environ.get("CADSMITH_HOME", "cadsmith-workspace"),
+    # A .env here may hold CADSMITH_HOME and GITHUB_TOKEN. The token goes to git only, never to the agent.
+    dotenv = read_env(Path(".env"))
+    web.add_argument("--dir", default=os.environ.get("CADSMITH_HOME") or dotenv.get("CADSMITH_HOME") or "cadsmith-workspace",
                      help="folder holding your projects; defaults to $CADSMITH_HOME. Make it a git repository to sync it")
+    web.set_defaults(git_token=dotenv.get("GITHUB_TOKEN"))
     web.add_argument("--port", type=int, default=8420)
     web.add_argument("--printer", default=DEFAULT_PRINTER, choices=printers)
     web.set_defaults(run=_web)

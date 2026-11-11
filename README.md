@@ -96,6 +96,17 @@ export CADSMITH_HOME=~/cadsmith-projects        # Windows: setx CADSMITH_HOME %U
 uv run cadsmith web
 ```
 
+Git signs in the usual way (Git Credential Manager, the macOS keychain). Or put the settings in a
+`.env` next to where you start the studio, which git ignores:
+
+```
+CADSMITH_HOME=~/cad-models
+GITHUB_TOKEN=ghp_...
+```
+
+The token is handed to the studio's git commands only: it is not written to git config and not given
+to the agent.
+
 The studio pulls when it starts, commits and pushes after every turn, and has a Sync button for
 pulling while it runs. Builds and Claude Code sessions stay on each computer: a pulled model is built
 again there, and the agent gets a recap of the chat instead of its old conversation, so version numbers

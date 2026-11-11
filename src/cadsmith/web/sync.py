@@ -6,6 +6,8 @@ Builds are left out: a computer that pulls a project builds it again from ``mode
 
 from __future__ import annotations
 
+import base64
+import os
 import subprocess
 import threading
 from pathlib import Path
@@ -29,13 +31,24 @@ def _ensure_lines(path: Path, lines: tuple[str, ...]) -> None:
         path.write_text(text, encoding="utf-8")
 
 
+def token_environment(token: str | None) -> dict[str, str] | None:
+    """Git settings that sign in to GitHub with a token, kept off the command line and out of git config."""
+    if not token:
+        return None
+    header = "Authorization: Basic " + base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "2",
+            "GIT_CONFIG_KEY_0": "credential.helper", "GIT_CONFIG_VALUE_0": "",
+            "GIT_CONFIG_KEY_1": "http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_1": header}
+
+
 class GitSync:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, token: str | None = None):
         self.root = root
         self.enabled = (root / ".git").exists()
         self.error: str | None = None
         self._lock = threading.Lock()
         self._identity: tuple[str, ...] | None = None
+        self._env = token_environment(token)
         if self.enabled:
             _ensure_lines(root / ".gitignore", IGNORED)
             _ensure_lines(root / ".gitattributes", ATTRIBUTES)
@@ -43,7 +56,7 @@ class GitSync:
     def _git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         try:
             done = subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL)
+                                  errors="replace", timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL, env=self._env)
         except FileNotFoundError:
             raise SyncError("git is not installed") from None
         except subprocess.TimeoutExpired:

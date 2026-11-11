@@ -1,12 +1,15 @@
+import base64
 import json
+import os
 import shutil
 import subprocess
 import time
 
 import pytest
 
+from cadsmith.dotenv import read_env
 from cadsmith.web.server import Projects, Studio
-from cadsmith.web.sync import GitSync, SyncError
+from cadsmith.web.sync import GitSync, SyncError, token_environment
 from test_web import GOOD, fake_agent
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
@@ -117,6 +120,24 @@ def test_an_unreachable_remote_is_not_called_a_conflict(two_computers, tmp_path)
     with pytest.raises(SyncError) as failure:
         GitSync(one).sync()
     assert "same file" not in str(failure.value)
+
+
+def test_a_token_reaches_git_but_not_the_environment(tmp_path, monkeypatch):
+    monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+    env = token_environment("secret")
+    assert env["GIT_CONFIG_KEY_1"] == "http.https://github.com/.extraheader"
+    assert base64.b64decode(env["GIT_CONFIG_VALUE_1"].split()[-1]) == b"x-access-token:secret"
+    assert "GIT_CONFIG_COUNT" not in os.environ and token_environment(None) is None
+    git(tmp_path, "init", "-q")
+    seen = GitSync(tmp_path, "secret")._git("config", "--get", "http.https://github.com/.extraheader").stdout
+    assert seen.strip() == env["GIT_CONFIG_VALUE_1"]
+    assert "secret" not in (tmp_path / ".git" / "config").read_text()
+
+
+def test_a_dotenv_file_is_read_without_touching_the_environment(tmp_path):
+    (tmp_path / ".env").write_text('# mine\nGITHUB_TOKEN="ghp_x"\nexport CADSMITH_HOME=~/cad-models\nbroken line\n')
+    assert read_env(tmp_path / ".env") == {"GITHUB_TOKEN": "ghp_x", "CADSMITH_HOME": "~/cad-models"}
+    assert read_env(tmp_path / "missing") == {} and "GITHUB_TOKEN" not in os.environ
 
 
 def test_the_studio_syncs_on_start_and_opens_what_came_in(two_computers):

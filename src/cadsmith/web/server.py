@@ -455,13 +455,14 @@ class Studio:
 class Projects:
     """Every project under one folder. Folders have fixed ids, so renaming keeps the agent's memory."""
 
-    def __init__(self, root: Path, printer: str = "x1c", agent_command: list[str] | None = None):
+    def __init__(self, root: Path, printer: str = "x1c", agent_command: list[str] | None = None,
+                 git_token: str | None = None):
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.printer, self.agent_command = printer, agent_command
         self._lock = threading.Lock()
         self._migrate_single_project()
-        self.git = GitSync(self.root)
+        self.git = GitSync(self.root, git_token)
         try:
             self.git.sync("Sync on start")  # take the other computer's work before opening anything
         except SyncError as failure:
@@ -730,9 +731,9 @@ def create_server(projects: Projects, port: int = DEFAULT_PORT) -> ThreadingHTTP
     return server
 
 
-def serve(root: Path, port: int = DEFAULT_PORT, printer: str = "x1c") -> None:
+def serve(root: Path, port: int = DEFAULT_PORT, printer: str = "x1c", git_token: str | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    projects = Projects(root, printer)
+    projects = Projects(root, printer, git_token=git_token)
     server = create_server(projects, port)
     for studio in list(projects.studios.values()):
         _background(studio.build_initial)
