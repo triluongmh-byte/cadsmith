@@ -33,7 +33,8 @@ MAX_REVIEWS = 2
 MAX_PRINTING_NOTES = 12
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
-SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8"}
+SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8",
+                   ".svg": "image/svg+xml"}
 #: What new projects used to start with; a project still holding exactly this counts as empty.
 OLD_STARTER_MODEL = '''import cadquery as cq
 
@@ -419,9 +420,11 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
         def log_message(self, *args):  # POSTs are logged by log_post; polling would only be noise
             pass
 
-        def _send(self, code: int, body: bytes, content_type: str) -> None:
+        def _send(self, code: int, body: bytes, content_type: str, sandbox: bool = False) -> None:
             self.send_response(code)
             self.send_header("Content-Type", content_type)
+            if sandbox:  # build files come from model code: never let one run script on this origin
+                self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
@@ -474,7 +477,7 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
             if found:
                 path = (studio.builds / found.group(1) / found.group(2)).resolve()
                 if path.is_relative_to(studio.builds) and path.is_file() and path.suffix in SERVED_SUFFIXES:
-                    return self._send(200, path.read_bytes(), SERVED_SUFFIXES[path.suffix])
+                    return self._send(200, path.read_bytes(), SERVED_SUFFIXES[path.suffix], sandbox=True)
             return self._json(404, {"error": "not found"})
 
         def _route_post(self, request: dict) -> tuple[int, dict]:

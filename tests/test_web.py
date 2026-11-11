@@ -159,6 +159,10 @@ def test_chat_builds_a_new_version(running):
     assert state["report"]["version"] == 1 and state["report"]["passed"]
     code, body = get(f"{url}/files/v1/block.stl")
     assert code == 200 and len(body) > 84
+    request = urllib.request.Request(f"{url}/files/v1/drawing.block.svg")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers["Content-Type"] == "image/svg+xml"
+        assert "sandbox" in response.headers["Content-Security-Policy"]
     assert studio.agent.session_id == "s1"
 
 
@@ -531,6 +535,23 @@ def test_a_failed_preview_does_not_fail_the_build(tmp_path, monkeypatch):
     (tmp_path / "model.py").write_text(GOOD)
     report = build_version(tmp_path, 1, "x1c")
     assert report["passed"] and report["preview"] is None
+
+
+def test_build_writes_drawing_sheets(tmp_path):
+    (tmp_path / "model.py").write_text(WITH_BOUGHT)
+    report = build_version(tmp_path, 1, "x1c")
+    assert report["drawings"] == [{"name": "assembly", "file": "drawing.svg"},
+                                  {"name": "plate", "file": "drawing.plate.svg"}]
+    assert (tmp_path / "builds" / "v1" / "drawing.plate.svg").read_text().startswith("<svg")
+
+
+def test_a_failed_drawing_does_not_fail_the_build(tmp_path, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("no sheet")
+    monkeypatch.setattr(pipeline_module, "part_sheet", broken)
+    (tmp_path / "model.py").write_text(GOOD)
+    report = build_version(tmp_path, 1, "x1c")
+    assert report["passed"] and report["drawings"] == []
 
 
 def test_report_gives_the_size(tmp_path):

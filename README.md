@@ -42,6 +42,11 @@ A local web page: the model fills the middle, with part details and the chat on 
 part or a change in any language and the model is rewritten, rebuilt and measured. If a check fails, the
 agent gets the measurements and tries again, up to twice.
 
+The ruler (press M) measures between two points you click on the model; corners snap. The Drawing page
+shows A3 technical drawing sheets made at each build: the assembly with a parts list, then one sheet per
+printed part with hidden lines, overall sizes and hole diameters, in third-angle projection. Each sheet is
+an SVG you can open or print at scale.
+
 Each project has its own model, versions and chat. Create, rename and delete them from the top bar.
 They live in `cadsmith-workspace/`, and a deleted project moves to `cadsmith-workspace/.trash/`.
 

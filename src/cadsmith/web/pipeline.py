@@ -11,6 +11,7 @@ from pathlib import Path
 import cadquery as cq
 
 from cadsmith.bambu3mf import prepare, write_bambu_3mf
+from cadsmith.drawing import assembly_sheet, part_sheet
 from cadsmith.export import export_part
 from cadsmith.fit import check_fits
 from cadsmith.loader import load_model
@@ -23,6 +24,7 @@ MODEL_FILE = "model.py"
 PLATES_FILE = "plates.3mf"
 REPORT_FILE = "report.json"
 PREVIEW_FILE = "preview.png"
+DRAWING_FILE = "drawing.svg"
 #: The check of a bought part: nothing to print, so nothing to fail.
 NOT_PRINTED = {"passed": True, "errors": [], "warnings": [], "needs_support": False, "chosen": None, "orientations": []}
 
@@ -40,6 +42,24 @@ def _write_preview(model, out: Path) -> str | None:
     except Exception:
         return None
     return PREVIEW_FILE
+
+
+def _write_drawings(model, out: Path, name: str, version: int) -> list[dict]:
+    """Technical drawing sheets: the assembly, then each printed part. Any that fail are left out."""
+    printed = model.printed
+    sheets = [("assembly", None, DRAWING_FILE)] if len(model.parts) > 1 else []
+    sheets += [(part.name, part, f"drawing.{part.name}.svg") for part in printed]
+    done = []
+    for index, (label, part, file) in enumerate(sheets, start=1):
+        number = f"{index}/{len(sheets)}"
+        try:
+            text = (assembly_sheet(model, name, f"v{version}", number) if part is None
+                    else part_sheet(part, name, f"v{version}", number))
+        except Exception:
+            continue
+        (out / file).write_text(text, encoding="utf-8")
+        done.append({"name": label, "file": file})
+    return done
 
 
 def build_version(workspace: Path, version: int, printer_name: str, name: str | None = None) -> dict:
@@ -72,11 +92,12 @@ def build_version(workspace: Path, version: int, printer_name: str, name: str | 
     except ValueError as error:
         plate_error = str(error)
     preview = _write_preview(model, out)
+    drawings = _write_drawings(model, out, name, version)
     assembled = cq.Compound.makeCompound([part.shape for part in model.parts])
     passed = (all(part["check"]["passed"] for part in parts) and all(fit["passed"] for fit in fits)
               and plate_error is None)
     return {"ok": True, "version": version, "passed": passed, "project": name, "parts": parts, "fits": fits,
-            "size": _bounds(assembled), "preview": preview,
+            "size": _bounds(assembled), "preview": preview, "drawings": drawings,
             "plates": plates, "plate_error": plate_error, "printer": printer.name,
             "bed": {"width": printer.width, "depth": printer.depth}}
 
