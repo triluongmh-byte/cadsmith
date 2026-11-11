@@ -165,3 +165,15 @@ def test_an_agent_without_its_conversation_gets_a_recap(tmp_path):
     prompt = (folder / "prompt.txt").read_text(encoding="utf-8")
     assert "make a pen box 80 mm long" in prompt and "Made it with a 2 mm wall." in prompt
     assert prompt.endswith("how long is it?") and prompt.count("how long is it?") == 1
+
+
+def test_a_projects_folder_under_home_is_expanded(tmp_path, monkeypatch):
+    from cadsmith import cli
+    from cadsmith.web import server
+
+    seen = {}
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(server, "serve", lambda root, *a, **k: seen.setdefault("root", root))
+    cli.main(["web", "--dir", "~/cad-models"])
+    assert seen["root"] == tmp_path / "cad-models"

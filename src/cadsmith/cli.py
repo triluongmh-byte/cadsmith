@@ -93,7 +93,7 @@ def _render(args) -> int:
 def _web(args) -> int:
     from cadsmith.web.server import serve
 
-    serve(Path(args.dir), args.port, args.printer, git_token=args.git_token)
+    serve(Path(args.dir).expanduser(), args.port, args.printer, git_token=args.git_token)
     return 0
 
 
