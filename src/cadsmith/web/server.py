@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -69,7 +70,17 @@ def parts():
 META_FILE = "project.json"
 PROJECT_FILES = (MODEL_FILE, "builds", "events.jsonl")
 MAX_NAME = 60
-ID_PATTERN = r"[0-9a-f]{10}"
+#: A project folder, named after the project; older ones are ten hex digits.
+ID_PATTERN = r"[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?"
+OLD_ID_PATTERN = r"[0-9a-f]{10}"
+MAX_FOLDER = 40
+
+
+def folder_name(name: str) -> str:
+    """A folder name that reads like the project: 'Hộp bút 2' becomes 'hop-but-2'."""
+    text = unicodedata.normalize("NFKD", name.replace("đ", "d").replace("Đ", "D"))
+    text = text.encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:MAX_FOLDER].strip("-") or "project"
 
 
 class Busy(RuntimeError):
@@ -182,15 +193,10 @@ def describe_problems(report: dict) -> str:
 class Studio:
     def __init__(self, workspace: Path, printer: str = "x1c", agent_command: list[str] | None = None,
                  on_idle: Callable[["Studio"], None] | None = None):
-        self.workspace = workspace.resolve()
         self.printer = printer
         self.on_idle = on_idle  # told when a turn ends, so the projects folder can be committed
-        self.builds = self.workspace / "builds"
+        self._use_folder(workspace.resolve())
         self.builds.mkdir(parents=True, exist_ok=True)
-        self.model = self.workspace / MODEL_FILE
-        self._meta_file = self.workspace / META_FILE
-        self._session_file = self.workspace / "session.json"
-        self._events_file = self.workspace / "events.jsonl"
         self._clear_old_starter()
         self._lock = threading.Lock()
         self.events = self._load_events()
@@ -202,6 +208,25 @@ class Studio:
         self.error = None
         self.agent = ClaudeAgent(self.workspace, agent_command, self._load_session())
         self._restore_latest()
+
+    def _use_folder(self, workspace: Path) -> None:
+        self.workspace = workspace
+        self.builds = workspace / "builds"
+        self.model = workspace / MODEL_FILE
+        self._meta_file = workspace / META_FILE
+        self._session_file = workspace / "session.json"
+        self._events_file = workspace / "events.jsonl"
+
+    def move_to(self, workspace: Path) -> None:
+        """Move the project to another folder. Claude Code keeps a conversation per folder, so the agent
+        starts a new one there and gets a recap of the chat."""
+        with self._lock:
+            if self.status != "idle":
+                raise Busy("this project is still working; stop it first")
+            shutil.move(str(self.workspace), str(workspace))
+            self._use_folder(workspace)
+            self._session_file.unlink(missing_ok=True)
+            self.agent.workspace, self.agent.session_id = workspace, None
 
     def _clear_old_starter(self) -> None:
         """Empty a project that only ever held the old placeholder block."""
@@ -453,7 +478,7 @@ class Studio:
 
 
 class Projects:
-    """Every project under one folder. Folders have fixed ids, so renaming keeps the agent's memory."""
+    """Every project under one folder, each in a folder named after it. The folder name is its id."""
 
     def __init__(self, root: Path, printer: str = "x1c", agent_command: list[str] | None = None,
                  git_token: str | None = None):
@@ -468,6 +493,33 @@ class Projects:
         except SyncError as failure:
             logger.warning("could not sync the projects folder: %s", failure)
         self.studios: dict[str, Studio] = {path.name: self._open(path) for path in self._folders()}
+        self._name_old_folders()
+
+    def _free_folder(self, name: str, ignore: Path | None = None) -> Path:
+        base = folder_name(name)
+        for count in range(1, 1000):
+            path = self.root / (base if count == 1 else f"{base[:MAX_FOLDER - 4]}-{count}")
+            if path == ignore or not path.exists():
+                return path
+        raise ProjectError("too many projects with that name")
+
+    def _move(self, studio: Studio, target: Path) -> None:
+        """Move a project to ``target`` (the caller holds the lock)."""
+        old = studio.id
+        studio.move_to(target)
+        self.studios[studio.id] = self.studios.pop(old)
+
+    def _name_old_folders(self) -> None:
+        """Give projects from before named folders a folder named after them."""
+        moved = []
+        with self._lock:
+            for studio in list(self.studios.values()):
+                if re.fullmatch(OLD_ID_PATTERN, studio.id) and folder_name(studio.name) != studio.id:
+                    target = self._free_folder(studio.name)
+                    self._move(studio, target)
+                    moved.append(studio.name)
+        if moved:
+            self._save_in_background("Name folders after their projects: " + ", ".join(moved))
 
     def _folders(self) -> list[Path]:
         return [path for path in self.root.iterdir()
@@ -478,11 +530,15 @@ class Projects:
 
     def _turn_ended(self, studio: Studio) -> None:
         version = studio.report and studio.report.get("version")
-        self.git.save(f"{studio.name}: v{version}" if version else studio.name)
+        self._save(f"{studio.name}: v{version}" if version else studio.name)
+
+    def _save(self, message: str) -> None:
+        if self.git.save(message):
+            self._reopen()
 
     def _save_in_background(self, message: str) -> None:
         if self.git.enabled:
-            _background(lambda: self.git.save(message))
+            _background(lambda: self._save(message))
 
     def sync(self) -> dict:
         """Commit, pull and push, then open what the other computer added or changed."""
@@ -542,7 +598,7 @@ class Projects:
     def create(self, name) -> Studio:
         with self._lock:
             cleaned = self._clean_name(name)
-            path = self.root / uuid.uuid4().hex[:10]
+            path = self._free_folder(cleaned)
             path.mkdir()
             (path / META_FILE).write_text(json.dumps({"name": cleaned}, ensure_ascii=False), encoding="utf-8")
             studio = self._open(path)
@@ -551,11 +607,16 @@ class Projects:
         return studio
 
     def rename(self, studio: Studio, name) -> str:
+        """Rename a project and move it to a folder named after it."""
         with self._lock:
             cleaned = self._clean_name(name, ignore=studio.id)
+            old = studio.name
+            target = self._free_folder(cleaned, ignore=studio.workspace)
+            if target != studio.workspace:
+                self._move(studio, target)
             studio.name = cleaned
         if studio.is_empty:  # a model is rebuilt after a rename and saved when that ends
-            self._save_in_background(f"Rename to {cleaned}")
+            self._save_in_background(f"Rename {old} to {cleaned}")
         return cleaned
 
     def delete(self, studio: Studio) -> None:
@@ -566,7 +627,10 @@ class Projects:
             trash = self.root / ".trash"
             trash.mkdir(exist_ok=True)
             name = studio.name
-            shutil.move(str(studio.workspace), str(trash / studio.id))
+            target = trash / studio.id
+            if target.exists():  # a project of the same name was deleted before
+                target = trash / f"{studio.id}-{time.strftime('%Y%m%d-%H%M%S')}"
+            shutil.move(str(studio.workspace), str(target))
             del self.studios[studio.id]
         self._save_in_background(f"Delete {name}")
 

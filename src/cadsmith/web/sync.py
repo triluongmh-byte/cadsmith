@@ -117,12 +117,22 @@ class GitSync:
             self.error = None
             return result
 
-    def save(self, message: str) -> None:
-        """Commit what changed and push it. Failing to push is kept as ``error``, never raised."""
+    def save(self, message: str) -> bool:
+        """Commit what changed and push it. Returns True when the other computer's work came in on the way.
+        Failing to push is kept as ``error``, never raised."""
+        def work():
+            self._commit(message)
+            try:
+                self._push()  # also retries an earlier failed push
+                return False
+            except SyncError:
+                changed = self._pull()  # the other computer pushed first: take its work, then push again
+                self._push()
+                return changed
         try:
-            self._run(lambda: (self._commit(message), self._push()))  # also retries an earlier failed push
+            return bool(self._run(work))
         except SyncError:
-            pass
+            return False
 
     def pull(self) -> bool:
         return bool(self._run(self._pull))

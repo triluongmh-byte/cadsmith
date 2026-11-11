@@ -361,7 +361,7 @@ $("dcancel").onclick=()=>$("dlg").close();
 $("dform").onsubmit=async e=>{e.preventDefault();const r=await dialogAction($("dinput").value);if(r.ok)$("dlg").close();if(!r.ok)$("derr").textContent=r.data.error||"That did not work."};
 const go=id=>{location.href=id?`/p/${id}/`:"/"};
 $("new").onclick=()=>ask({title:"New project",text:"Starts empty. Describe what you want in the chat.",ok:"Create",action:async name=>{const r=await post("/api/projects",{name});if(r.ok)go(r.data.id);return r}});
-$("rename").onclick=()=>ask({title:"Rename project",value:state.name,ok:"Rename",action:async name=>{const r=await post(`${BASE}/api/rename`,{name});if(r.ok){state.name=r.data.name;$("project").textContent=r.data.name}return r}});
+$("rename").onclick=()=>ask({title:"Rename project",value:state.name,ok:"Rename",action:async name=>{const r=await post(`${BASE}/api/rename`,{name});if(r.ok){if(r.data.id!==state.id)go(r.data.id);state.name=r.data.name;$("project").textContent=r.data.name}return r}});
 $("delete").onclick=()=>ask({title:`Delete “${state.name}”?`,text:"The model, its versions and its chat leave the list. A copy stays in the .trash folder.",input:false,ok:"Delete",danger:true,action:async()=>{const r=await post(`${BASE}/api/delete`);if(r.ok)go();return r}});
 const syncShow=s=>{if(!s.enabled)return;$("sync").hidden=false;const waiting=s.unpushed>0;$("synclabel").textContent=s.error?"Sync failed":waiting?`Sync (${s.unpushed})`:"Sync";$("sync").title=s.error||(s.remote?(waiting?`${s.unpushed} change${s.unpushed>1?"s":""} not pushed yet`:"Commit, pull and push the projects folder"):"No remote yet: changes are only committed on this computer")};
 fetch("/api/sync").then(r=>r.json()).then(syncShow).catch(()=>{});

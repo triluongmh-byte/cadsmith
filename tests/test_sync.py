@@ -140,13 +140,24 @@ def test_a_dotenv_file_is_read_without_touching_the_environment(tmp_path):
     assert read_env(tmp_path / "missing") == {} and "GITHUB_TOKEN" not in os.environ
 
 
+def test_a_save_after_the_other_computer_pushed_still_gets_through(two_computers):
+    one, two = two_computers
+    write_project(one, "pen-box", "Pen box")
+    GitSync(one).save("one")
+    write_project(two, "lid", "Lid")
+    sync = GitSync(two)
+    sync.save("two")
+    assert sync.error is None and sync.status()["unpushed"] == 0
+    assert (two / "pen-box" / "model.py").exists()
+
+
 def test_the_studio_syncs_on_start_and_opens_what_came_in(two_computers):
     one, two = two_computers
-    write_project(one, "a1b2c3d4e5", "Pen box")
+    write_project(one, "pen-box", "Pen box")
     GitSync(one).save("start")
     projects = Projects(two)
     assert [item["name"] for item in projects.list()] == ["Pen box"]
-    write_project(one, "f0e1d2c3b4", "Lid")
+    write_project(one, "lid", "Lid")
     GitSync(one).save("lid")
     assert projects.sync()["changed"] is True
     assert sorted(item["name"] for item in projects.list()) == ["Lid", "Pen box"]

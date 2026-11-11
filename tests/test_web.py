@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import socket
 import stat
 import sys
@@ -361,17 +362,43 @@ def test_bad_or_duplicate_names_are_refused(running, name):
     assert code == 400 and body["error"]
 
 
-def test_rename_keeps_folder_history_and_conversation(running):
+def test_rename_moves_the_folder_and_keeps_the_history(running):
     studio, url = running()
     post(f"{url}/api/chat", {"message": "go"})
     wait_idle(studio)
-    folder, session = studio.workspace, studio.agent.session_id
-    assert post(f"{url}/api/rename", {"name": "Hộp bút"}) == (200, {"id": studio.id, "name": "Hộp bút"})
+    folder, events = studio.workspace, len(studio.events)
+    assert post(f"{url}/api/rename", {"name": "Hộp bút"}) == (200, {"id": "hop-but", "name": "Hộp bút"})
     assert names(url) == ["Hộp bút"]
-    assert studio.workspace == folder and studio.agent.session_id == session
+    assert studio.workspace == folder.parent / "hop-but" and not folder.exists()
+    assert (studio.workspace / "model.py").exists() and len(studio._load_events()) >= events
+    assert studio.agent.workspace == studio.workspace and studio.agent.session_id is None  # the agent gets a recap
+    assert get(f"{root_of(url)}/p/hop-but/api/state")[0] == 200
     time.sleep(0.3)
     wait_idle(studio)
     assert studio.report["project"] == "Hộp bút"
+
+
+def test_folder_names_read_like_the_project():
+    assert server_module.folder_name("C130 fan") == "c130-fan"
+    assert server_module.folder_name("Hộp bút đẹp") == "hop-but-dep"
+    assert server_module.folder_name("!!!") == "project"
+    assert re.fullmatch(server_module.ID_PATTERN, server_module.folder_name("x" * 90 + " y"))
+
+
+def test_two_projects_with_one_folder_name_get_their_own(tmp_path):
+    projects = Projects(tmp_path / "root")
+    first, second = projects.create("Fan"), projects.create("fan!")
+    assert (first.id, second.id) == ("fan", "fan-2")
+
+
+def test_an_old_numbered_folder_is_named_after_its_project(tmp_path):
+    old = tmp_path / "root" / "d377ce363e"
+    old.mkdir(parents=True)
+    (old / "project.json").write_text(json.dumps({"name": "C130 fan"}))
+    (old / "session.json").write_text(json.dumps({"session_id": "s1"}))
+    projects = Projects(tmp_path / "root")
+    assert [item["id"] for item in projects.list()] == ["c130-fan"]
+    assert not old.exists() and not (tmp_path / "root" / "c130-fan" / "session.json").exists()
 
 
 def test_rename_to_its_own_name_with_new_case_is_allowed(running):
