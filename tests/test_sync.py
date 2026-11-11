@@ -111,6 +111,14 @@ def test_a_failed_push_is_kept_as_an_error_and_retried(two_computers, tmp_path):
     assert sync.error is None and sync.status()["unpushed"] == 0
 
 
+def test_an_unreachable_remote_is_not_called_a_conflict(two_computers, tmp_path):
+    one, _ = two_computers
+    git(one, "remote", "set-url", "origin", str(tmp_path / "missing.git"))
+    with pytest.raises(SyncError) as failure:
+        GitSync(one).sync()
+    assert "same file" not in str(failure.value)
+
+
 def test_the_studio_syncs_on_start_and_opens_what_came_in(two_computers):
     one, two = two_computers
     write_project(one, "a1b2c3d4e5", "Pen box")

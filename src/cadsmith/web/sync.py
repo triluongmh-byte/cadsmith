@@ -77,7 +77,8 @@ class GitSync:
         if not self._has_upstream():
             return False
         before = self._git("rev-parse", "HEAD", check=False).stdout.strip()
-        done = self._git(*self._author(), "pull", "--rebase", "--autostash", "-q", check=False)
+        self._git("fetch", "-q")  # a network or sign-in problem stops here, under its own name
+        done = self._git(*self._author(), "rebase", "-q", "--autostash", "@{upstream}", check=False)
         if done.returncode:
             self._git("rebase", "--abort", check=False)
             raise SyncError("both computers changed the same file, so nothing was merged:\n"
