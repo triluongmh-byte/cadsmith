@@ -39,6 +39,10 @@ def _windows_folders() -> list[Path]:
     return folders
 
 
+def _mac_folders() -> list[Path]:
+    return [Path("/Applications"), Path.home() / "Applications"]
+
+
 def _registered(executable: str) -> Path | None:
     """Where Windows' App Paths say a program is installed."""
     try:
@@ -68,7 +72,7 @@ def _find(windows: tuple[str, ...], mac: tuple[str, ...], linux: tuple[str, ...]
         return None
     if sys.platform == "darwin":
         for bundle in mac:
-            for folder in (Path("/Applications"), Path.home() / "Applications"):
+            for folder in _mac_folders():
                 if (folder / bundle).is_dir():
                     return folder / bundle
         return None

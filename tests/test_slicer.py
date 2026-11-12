@@ -18,6 +18,7 @@ def no_slicer_installed(monkeypatch, tmp_path):
     monkeypatch.setattr(slicer_module, "_registered", lambda executable: None)
     monkeypatch.setattr(slicer_module.shutil, "which", lambda command: None)
     monkeypatch.setattr(slicer_module.Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(slicer_module, "_mac_folders", lambda: [tmp_path / "Applications"])
     return tmp_path
 
 
@@ -43,6 +44,13 @@ def test_bambu_studio_is_found_in_program_files_first(no_slicer_installed, monke
 
 def test_nothing_installed_means_no_slicer(no_slicer_installed):
     assert find_slicer() is None
+
+
+def test_a_mac_app_is_found_in_applications(no_slicer_installed, monkeypatch):
+    monkeypatch.setattr(slicer_module.sys, "platform", "darwin")
+    (no_slicer_installed / "Applications" / "BambuStudio.app").mkdir(parents=True)
+    found = find_slicer()
+    assert found.name == "Bambu Studio" and found.program == no_slicer_installed / "Applications" / "BambuStudio.app"
 
 
 def test_a_mac_app_opens_through_open(monkeypatch):
