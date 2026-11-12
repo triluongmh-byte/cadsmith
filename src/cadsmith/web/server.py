@@ -25,7 +25,8 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from cadsmith.stl import StlError, describe_stl
 from cadsmith.web.agent import ClaudeAgent
-from cadsmith.web.pipeline import MODEL_FILE, REPORT_FILE
+from cadsmith.web import slicer as slicer_module
+from cadsmith.web.pipeline import MODEL_FILE, PLATES_FILE, REPORT_FILE
 from cadsmith.web.sync import GitSync, SyncError
 
 logger = logging.getLogger("cadsmith.web")
@@ -294,6 +295,19 @@ class Studio:
             if report.get("ok"):
                 self.report = report
                 return
+
+    def project_file(self) -> Path:
+        """The latest build's project 3MF, under the project's name, which the slicer shows as its title."""
+        with self._lock:
+            report = self.report
+        source = report and self.builds / f"v{report['version']}" / PLATES_FILE
+        if not source or not source.is_file():
+            raise ProjectError("there is no build to open yet")
+        safe = "".join(c for c in self.name if c.isalnum() or c in " _-").strip() or "project"
+        target = self.builds / f"v{report['version']}" / "open" / f"{safe}.3mf"
+        target.parent.mkdir(exist_ok=True)
+        shutil.copyfile(source, target)
+        return target
 
     def _build_matches_model(self) -> bool:
         if self.report is None or self.is_empty:
@@ -688,6 +702,9 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 return self._json(200, {"projects": projects.list()})
             if url.path == "/api/sync":
                 return self._json(200, projects.git.status())
+            if url.path == "/api/slicer":
+                found = slicer_module.find_slicer()
+                return self._json(200, {"name": found and found.name})
             match = re.fullmatch(rf"/p/({ID_PATTERN})(/.*)", url.path)
             studio = projects.get(match.group(1)) if match else None
             if studio is None:
@@ -724,7 +741,7 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                     return 200, projects.sync()
                 except SyncError as failure:
                     return 409, {"error": str(failure)}
-            match = re.fullmatch(rf"/p/({ID_PATTERN})/api/(chat|stop|rename|delete)", self.path)
+            match = re.fullmatch(rf"/p/({ID_PATTERN})/api/(chat|stop|rename|delete|open)", self.path)
             studio = projects.get(match.group(1)) if match else None
             if studio is None:
                 return 404, {"error": "not found"}
@@ -736,6 +753,13 @@ def make_handler(projects: Projects, allowed_hosts: set[str]):
                 return 202, {"ok": True, "queued": studio.send(message)}
             if action == "stop":
                 return 200, {"stopped": studio.stop()}
+            if action == "open":
+                found = slicer_module.find_slicer()
+                if found is None:
+                    return 404, {"error": "no slicer found on this computer; download the 3MF instead"}
+                file = studio.project_file()
+                slicer_module.open_in_slicer(found, file)
+                return 200, {"slicer": found.name, "file": file.name}
             if action == "rename":
                 name = projects.rename(studio, request.get("name"))
                 _background(studio.rebuild)  # plate names inside the 3MF follow the project name

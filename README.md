@@ -82,6 +82,10 @@ Other controls: **D** shows or hides the overall sizes, the compass in the lower
 look along an axis, the eye button shows through parts, and the Plates page shows how parts are laid
 out on the print bed.
 
+When Bambu Studio, OrcaSlicer, PrusaSlicer or UltiMaker Cura is installed, the top bar opens the
+latest build straight in it, and Download stays beside it. Set `CADSMITH_SLICER` to a program's path
+to pick another one.
+
 Each project has its own model, versions and chat. Create, rename and delete them from the top bar.
 They live in `cadsmith-workspace/`, or in the folder given by `--dir` or `CADSMITH_HOME`, and a deleted
 project moves to `.trash/` inside it.

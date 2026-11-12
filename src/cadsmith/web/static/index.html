@@ -126,6 +126,7 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
   <span class="pill" id="status">starting</span>
   <span class="grow"></span>
   <a class="btn hv" id="source" target="_blank" rel="noopener">model.py</a>
+  <button class="btn primary" id="open" title="Open the project with its named plates in your slicer" hidden>Open in slicer</button>
   <a class="btn primary" id="download" title="Bambu project with named plates">Download 3MF</a>
 </header>
 <div class="app">
@@ -317,7 +318,7 @@ $("sheetpick").onchange=()=>pickSheet($("sheetpick").value);
 function renderSheets(r){const list=r.drawings||[];$("navdrawing").hidden=!list.length;if(!list.length){if(page==="drawing")showPage("3d");return}const key=r.version+":"+list.map(x=>x.file).join();if(key===sheetKey)return;sheetKey=key;
  const keep=$("sheetpick").value,sel=$("sheetpick");sel.replaceChildren(...list.map(x=>{const o=el("option","",x.name==="assembly"?"Assembly":x.name);o.value=x.file;return o}));pickSheet(list.some(x=>x.file===keep)?keep:list[0].file)}
 
-function applyChrome(){const has=!!report;["tools","chips","hint","gizmo"].forEach(i=>$(i).style.display=(has&&page==="3d")?"":"none");["download","source"].forEach(i=>$(i).style.display=has?"":"none");$("tabs").style.display=has?"":"none";$("stats").style.display=has?"":"none"}
+function applyChrome(){const has=!!report;["tools","chips","hint","gizmo"].forEach(i=>$(i).style.display=(has&&page==="3d")?"":"none");["download","source"].forEach(i=>$(i).style.display=has?"":"none");$("open").style.display=(has&&slicer)?"":"none";$("tabs").style.display=has?"":"none";$("stats").style.display=has?"":"none"}
 function renderEmpty(){const box=$("empty");if(report){box.style.display="none";return}box.style.display="";const key=busy?"busy":state.empty?"empty":"build";if(box.dataset.key===key)return;box.dataset.key=key;box.replaceChildren();if(key==="empty"){box.append(el("div","","Nothing here yet."));box.lastChild.append(el("small","","Describe what you want to make in the chat on the right."))}else box.textContent=key==="busy"?"Working on the first version…":"Building…"}
 /* status and chat */
 let state={},seq=0,busy=false,lastKey="";
@@ -363,6 +364,11 @@ const go=id=>{location.href=id?`/p/${id}/`:"/"};
 $("new").onclick=()=>ask({title:"New project",text:"Starts empty. Describe what you want in the chat.",ok:"Create",action:async name=>{const r=await post("/api/projects",{name});if(r.ok)go(r.data.id);return r}});
 $("rename").onclick=()=>ask({title:"Rename project",value:state.name,ok:"Rename",action:async name=>{const r=await post(`${BASE}/api/rename`,{name});if(r.ok){if(r.data.id!==state.id)go(r.data.id);state.name=r.data.name;$("project").textContent=r.data.name}return r}});
 $("delete").onclick=()=>ask({title:`Delete “${state.name}”?`,text:"The model, its versions and its chat leave the list. A copy stays in the .trash folder.",input:false,ok:"Delete",danger:true,action:async()=>{const r=await post(`${BASE}/api/delete`);if(r.ok)go();return r}});
+let slicer=null;
+fetch("/api/slicer").then(r=>r.json()).then(s=>{if(!s.name)return;slicer=s.name;$("open").hidden=false;$("open").textContent=`Open in ${s.name}`;
+  $("download").className="btn hv";$("download").textContent="Download";applyChrome()}).catch(()=>{});
+$("open").onclick=async()=>{const b=$("open");b.disabled=true;b.textContent="Opening…";const r=await post(`${BASE}/api/open`);
+  setTimeout(()=>{b.disabled=false;b.textContent=`Open in ${slicer}`},r.ok?2500:0);if(!r.ok)alert(r.data.error||"Could not open the slicer.")};
 const syncShow=s=>{if(!s.enabled)return;$("sync").hidden=false;const waiting=s.unpushed>0;$("synclabel").textContent=s.error?"Sync failed":waiting?`Sync (${s.unpushed})`:"Sync";$("sync").title=s.error||(s.remote?(waiting?`${s.unpushed} change${s.unpushed>1?"s":""} not pushed yet`:"Commit, pull and push the projects folder"):"No remote yet: changes are only committed on this computer")};
 fetch("/api/sync").then(r=>r.json()).then(syncShow).catch(()=>{});
 $("sync").onclick=async()=>{$("sync").disabled=true;$("synclabel").textContent="Syncing…";const r=await post("/api/sync");$("sync").disabled=false;
