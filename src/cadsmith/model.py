@@ -58,6 +58,8 @@ class Model:
     name: str
     parts: list[Part]
     fits: list[Fit] = field(default_factory=list)
+    #: The bought electronics and their wires (a ``cadsmith.electronics.Wiring``), if the model declares any.
+    wiring: object = None
 
     @property
     def printed(self) -> list[Part]:

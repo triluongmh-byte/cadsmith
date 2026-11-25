@@ -1,7 +1,9 @@
 """Arrange parts on named plates for a single filament.
 
 Big parts share plates with big parts and small with small. Each part is turned so its long side
-runs along X, and rows fill along X before moving on in Y.
+runs along X, and rows fill along X before moving on in Y, so the layout stays short in Y: on a
+bed-slinger the bed carries Y, and fewer long Y moves shake the print less. Each plate's layout is
+then centred on the bed.
 """
 
 from __future__ import annotations
@@ -140,6 +142,57 @@ class _Cursor:
         return placement
 
 
+def _fits(rects, printer: Printer, gap: float, margin: float) -> bool:
+    for rect in rects:
+        if (rect[0] < margin - 1e-9 or rect[1] < margin - 1e-9 or rect[2] > printer.width - margin + 1e-9
+                or rect[3] > printer.depth - margin + 1e-9):
+            return False
+        for zone in printer.exclude:
+            if _overlaps(rect, (zone[0] - gap, zone[1] - gap, zone[2] + gap, zone[3] + gap)):
+                return False
+    return True
+
+
+def _centre(plate: Plate, printer: Printer, gap: float, margin: float) -> None:
+    """Move the plate's parts to the middle of the bed: each row centred on X, the rows together on Y.
+
+    If that lands on an exclusion zone, the packed layout moves as one block to the clear spot nearest
+    the middle instead. A layout that fits nowhere else stays where it was packed.
+    """
+    rows: dict[float, list[Placement]] = {}
+    for placement in plate.placements:
+        rows.setdefault(placement.y, []).append(placement)
+    y0 = min(p.y for p in plate.placements)
+    y1 = max(p.y + p.item.depth for p in plate.placements)
+    dy = (printer.depth - (y1 - y0)) / 2 - y0
+    moved = {}
+    for row in rows.values():
+        x0, x1 = min(p.x for p in row), max(p.x + p.item.width for p in row)
+        dx = (printer.width - (x1 - x0)) / 2 - x0
+        for p in row:
+            moved[id(p)] = (p.x + dx, p.y + dy)
+    rects = [(x, y, x + p.item.width, y + p.item.depth) for p in plate.placements for x, y in [moved[id(p)]]]
+    if _fits(rects, printer, gap, margin):
+        for p in plate.placements:
+            p.x, p.y = moved[id(p)]
+        return
+    # Rows centred on their own hit a zone: slide the packed block instead, nearest the middle first.
+    x0 = min(p.x for p in plate.placements)
+    x1 = max(p.x + p.item.width for p in plate.placements)
+    lo_x, hi_x = margin - x0, printer.width - margin - x1
+    lo_y, hi_y = margin - y0, printer.depth - margin - y1
+    ideal = ((printer.width - (x1 - x0)) / 2 - x0, dy)
+    steps = lambda lo, hi: [lo + (hi - lo) * i / max(1, round(hi - lo)) for i in range(max(1, round(hi - lo)) + 1)]
+    shifts = sorted(((sx, sy) for sx in steps(lo_x, hi_x) for sy in steps(lo_y, hi_y)),
+                    key=lambda s: (s[0] - ideal[0]) ** 2 + (s[1] - ideal[1]) ** 2)
+    for sx, sy in shifts:
+        if _fits([(r[0] + sx, r[1] + sy, r[2] + sx, r[3] + sy) for r in (p.rect for p in plate.placements)],
+                 printer, gap, margin):
+            for p in plate.placements:
+                p.x, p.y = p.x + sx, p.y + sy
+            return
+
+
 def _size_label(plate: Plate, printer: Printer) -> str:
     longest = max(placement.item.width for placement in plate.placements) / printer.width
     return "big" if longest >= 0.5 else "medium" if longest >= 0.25 else "small"
@@ -170,5 +223,6 @@ def arrange(items: list[Item], printer: Printer, *, project: str = "plate", gap:
                 raise ArrangeError(f"{item.name} cannot be placed clear of the bed's exclusion zone on {printer.name}")
         plates[-1].placements.append(placement)
     for plate in plates:
+        _centre(plate, printer, gap, margin)
         plate.name = f"{project} {plate.index} {_size_label(plate, printer)}"
     return plates

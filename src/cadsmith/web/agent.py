@@ -14,7 +14,8 @@ from typing import Callable
 
 AGENT_TIMEOUT = 2700  # a large assembly can take the agent well over 15 minutes
 SYSTEM_PROMPT = """You write and edit a parametric 3D-printable CadQuery model in ./model.py. It is the only file you
-change. A new project has no model.py yet: create it.
+change, except ./firmware/main.cpp when the user asks what the electronics should do. A new project has no model.py
+yet: create it.
 
 The file must define parts() returning {name: cq.Workplane}, every part in its assembled position, in millimetres.
 All dimensions go in a Params class at the top. Optional module-level settings:

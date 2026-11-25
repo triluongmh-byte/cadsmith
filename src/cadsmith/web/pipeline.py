@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import traceback
+import zipfile
 from pathlib import Path
 
 import cadquery as cq
 
 from cadsmith.bambu3mf import prepare, write_bambu_3mf
+from cadsmith.electronics import check_wiring
+from cadsmith.electronics.firmware import BOARDS, firmware_files
 from cadsmith.drawing import assembly_sheet, part_sheet
 from cadsmith.export import export_part
 from cadsmith.fit import check_fits
@@ -25,6 +29,9 @@ PLATES_FILE = "plates.3mf"
 REPORT_FILE = "report.json"
 PREVIEW_FILE = "preview.png"
 DRAWING_FILE = "drawing.svg"
+FIRMWARE_ZIP = "firmware.zip"
+#: The project's own sketch; without it the firmware is a starter that tests the wiring.
+SKETCH_FILE = "firmware/main.cpp"
 #: The check of a bought part: nothing to print, so nothing to fail.
 NOT_PRINTED = {"passed": True, "errors": [], "warnings": [], "needs_support": False, "chosen": None, "orientations": []}
 
@@ -62,6 +69,25 @@ def _write_drawings(model, out: Path, name: str, version: int) -> list[dict]:
     return done
 
 
+def _wiring_and_firmware(model, workspace: Path, out: Path, name: str) -> tuple[dict | None, dict | None]:
+    """The wiring check, and the PlatformIO project for the wired board zipped into the build."""
+    if model.wiring is None:
+        return None, None
+    checked = check_wiring(model.wiring)
+    sketch_path = workspace / SKETCH_FILE
+    sketch = sketch_path.read_text(encoding="utf-8") if sketch_path.is_file() else None
+    files = firmware_files(model.wiring, checked, name, sketch)
+    if not files:
+        return checked.to_dict(), None
+    folder = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "firmware"
+    with zipfile.ZipFile(out / FIRMWARE_ZIP, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path, text in files.items():
+            archive.writestr(f"{folder}/{path}", text)
+    board = next(d.title for d in model.wiring.devices.values() if d.kind in BOARDS)
+    return checked.to_dict(), {"board": board, "custom": sketch is not None, "zip": FIRMWARE_ZIP,
+                               "files": [{"path": path, "text": text} for path, text in files.items()]}
+
+
 def build_version(workspace: Path, version: int, printer_name: str, name: str | None = None) -> dict:
     """Export, check and arrange the model into ``builds/v<version>``; returns the report."""
     out = workspace / "builds" / f"v{version}"
@@ -81,6 +107,7 @@ def build_version(workspace: Path, version: int, printer_name: str, name: str | 
         parts.append({"name": part.name, "quantity": part.quantity, "bought": part.bought, "size": _bounds(part.shape),
                       "check": check})
     fits = [result.to_dict() for result in check_fits(model)]
+    wiring, firmware = _wiring_and_firmware(model, workspace, out, name)
     plates, plate_error = [], None
     try:
         arranged = arrange([item for item in prepare(model, printer)], printer, project=name)
@@ -95,11 +122,11 @@ def build_version(workspace: Path, version: int, printer_name: str, name: str | 
     drawings = _write_drawings(model, out, name, version)
     assembled = cq.Compound.makeCompound([part.shape for part in model.parts])
     passed = (all(part["check"]["passed"] for part in parts) and all(fit["passed"] for fit in fits)
-              and plate_error is None)
+              and plate_error is None and (wiring is None or wiring["passed"]))
     return {"ok": True, "version": version, "passed": passed, "project": name, "parts": parts, "fits": fits,
-            "size": _bounds(assembled), "preview": preview, "drawings": drawings,
+            "wiring": wiring, "firmware": firmware, "size": _bounds(assembled), "preview": preview, "drawings": drawings,
             "plates": plates, "plate_error": plate_error, "printer": printer.name,
-            "bed": {"width": printer.width, "depth": printer.depth}}
+            "bed": {"width": printer.width, "depth": printer.depth, "exclude": [list(z) for z in printer.exclude]}}
 
 
 def main(argv: list[str]) -> int:

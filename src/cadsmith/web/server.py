@@ -48,7 +48,7 @@ RECAP_CHARS = 12000
 BUILD_TIMEOUT = 300
 DEFAULT_PORT = 8420
 SERVED_SUFFIXES = {".stl": "model/stl", ".step": "application/step", ".3mf": "model/3mf", ".py": "text/plain; charset=utf-8",
-                   ".svg": "image/svg+xml"}
+                   ".svg": "image/svg+xml", ".zip": "application/zip"}
 #: What new projects used to start with; a project still holding exactly this counts as empty.
 OLD_STARTER_MODEL = '''import cadquery as cq
 
@@ -155,11 +155,16 @@ def repair_prompt(report: dict, problems: str) -> str:
 def printing_notes(report: dict) -> str:
     """What passed the checks but would still make the print worse."""
     notes = [f"{part['name']}: {warning}" for part in report["parts"] for warning in part["check"]["warnings"]]
-    if not notes:
-        return ""
-    shown = "\n".join(notes[:MAX_PRINTING_NOTES])
-    return ("\nPrinting notes from the checks. Supports that a different ORIENT or a split would avoid, and structural "
-            f"walls under 1.6 mm, count as defects to fix:\n{shown}\n")
+    wiring = [f"- {warning}" for warning in (report.get("wiring") or {}).get("warnings", [])]
+    text = ""
+    if notes:
+        shown = "\n".join(notes[:MAX_PRINTING_NOTES])
+        text += ("\nPrinting notes from the checks. Supports that a different ORIENT or a split would avoid, and "
+                 f"structural walls under 1.6 mm, count as defects to fix:\n{shown}\n")
+    if wiring:
+        text += ("\nWiring notes from the checks. Fix any that would damage a module or stop it working:\n"
+                 + "\n".join(wiring[:MAX_PRINTING_NOTES]) + "\n")
+    return text
 
 
 def review_prompt(report: dict, request: str) -> str:
@@ -188,6 +193,7 @@ def describe_problems(report: dict) -> str:
               for fit in report["fits"] if not fit["passed"]]
     if report.get("plate_error"):
         lines.append(report["plate_error"])
+    lines += [f"wiring: {error}" for error in (report.get("wiring") or {}).get("errors", [])]
     return "\n".join(lines)
 
 

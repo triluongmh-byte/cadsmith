@@ -1,4 +1,4 @@
-"""Command line: build, check, fit, plate, render, web."""
+"""Command line: build, check, fit, wiring, plate, render, web."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from pathlib import Path
 from cadsmith import __version__
 from cadsmith.bambu3mf import make_project
 from cadsmith.dotenv import read_env
+from cadsmith.electronics import check_wiring
 from cadsmith.export import export_part
 from cadsmith.fit import check_fits
 from cadsmith.loader import load_model
@@ -69,6 +70,32 @@ def _fit(args) -> int:
         for result in results:
             print(("PASS " if result.passed else "FAIL ") + result.message)
     return 0 if all(result.passed for result in results) else 1
+
+
+def _wiring(args) -> int:
+    model = load_model(args.model)
+    if model.wiring is None:
+        print("the model declares no DEVICES or WIRES")
+        return 0
+    report = check_wiring(model.wiring)
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+        return 0 if report.passed else 1
+    print("PASS" if report.passed else "FAIL")
+    for error in report.errors:
+        print(f"  ERROR: {error}")
+    for warning in report.warnings:
+        print(f"  warning: {warning}")
+    if report.pins:
+        print("pins:")
+        for pin in report.pins:
+            print(f"  {pin['pin']:<16} {pin['use']:<5} -> {', '.join(pin['to'])}")
+    if report.power:
+        print("power, worst case:")
+        for supply in report.power:
+            limit = f" of {supply['max_ma']:g}" if supply["max_ma"] else ""
+            print(f"  {supply['supply']:<20} {supply['volts']:g} V  {supply['draw_ma']} mA{limit}")
+    return 0 if report.passed else 1
 
 
 def _plate(args) -> int:
@@ -132,6 +159,11 @@ def _parser() -> argparse.ArgumentParser:
     plate.add_argument("--size-ratio", type=float, default=DEFAULT_SIZE_RATIO,
                        help="a part shares a plate only if its footprint is at least this share of the plate's largest")
     plate.set_defaults(run=_plate)
+
+    wiring = commands.add_parser("wiring", help="check how the model's DEVICES are wired and list the pin map")
+    wiring.add_argument("model")
+    wiring.add_argument("--json", action="store_true")
+    wiring.set_defaults(run=_wiring)
 
     render = commands.add_parser("render", help="draw a PNG preview of the assembled model")
     render.add_argument("model")

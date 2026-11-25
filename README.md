@@ -43,6 +43,7 @@ The studio's agent is [Claude Code](https://claude.com/claude-code): install it 
 uv run cadsmith build  examples/lidded_box.py -o out     # STEP, STL and 3MF for each part
 uv run cadsmith check  examples/lidded_box.py            # thin walls and overhang
 uv run cadsmith fit    examples/lidded_box.py            # clearance between parts
+uv run cadsmith wiring my_robot.py                       # pins, voltages and power budget of DEVICES/WIRES
 uv run cadsmith plate  examples/*.py -o out/desk.3mf --name desk --printer x1c
 uv run cadsmith render examples/lidded_box.py -o out     # PNG preview
 ```

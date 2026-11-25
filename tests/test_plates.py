@@ -22,7 +22,7 @@ def rects_clear(plate, gap):
 def test_fills_along_x_first():
     plate = arrange([Item(f"p{i}", 40, 30, 10) for i in range(3)], OPEN)[0]
     assert len({placement.y for placement in plate.placements}) == 1
-    assert [placement.x for placement in plate.placements] == [5, 50, 95]
+    assert [placement.x for placement in plate.placements] == [35, 80, 125]  # 130 mm row centred on 200
 
 
 def test_new_row_only_when_x_is_full():
@@ -74,15 +74,34 @@ def test_exclusion_zone_is_avoided():
 def test_full_width_part_rises_past_the_exclusion_zone():
     printer = get_printer("x1c")
     placement = arrange([Item("wide", 240, 40, 5)], printer)[0].placements[0]
-    assert placement.x == 5
+    assert placement.x == 8
     assert placement.y >= 33
 
 
-def test_row_after_the_zone_starts_at_the_margin():
+def test_each_row_is_centred_on_x():
     printer = get_printer("x1c")
     plate = arrange([Item(f"p{i}", 100, 100, 5) for i in range(3)], printer)[0]
-    assert plate.placements[2].x == 5
-    assert plate.placements[2].y > 100
+    assert [p.x for p in plate.placements] == [25.5, 130.5, 78]
+    assert plate.placements[2].y > plate.placements[0].y + 100
+
+
+def test_a_single_part_sits_in_the_middle():
+    placement = arrange([Item("p", 40, 20, 5)], OPEN)[0].placements[0]
+    assert (placement.x, placement.y) == (80, 90)
+
+
+def test_layout_is_centred_on_y():
+    plate = arrange([Item(f"p{i}", 60, 30, 10) for i in range(4)], OPEN)[0]
+    y0 = min(p.y for p in plate.placements)
+    y1 = max(p.y + p.item.depth for p in plate.placements)
+    assert y0 == pytest.approx(200 - y1)
+
+
+def test_centring_slides_clear_of_the_exclusion_zone():
+    # Centred, this part would sit at (13, 23) on top of the corner zone; it moves to the nearest clear spot.
+    printer = get_printer("x1c")
+    placement = arrange([Item("big", 230, 210, 5)], printer)[0].placements[0]
+    assert (placement.x, placement.y) == (13, 33)
 
 
 def test_plates_are_named_by_project_and_size():

@@ -12,7 +12,9 @@ A shape is a ``cq.Workplane``, ``cq.Shape`` or ``cq.Assembly``. Optional module-
 - ``FITS``: a list of :class:`cadsmith.Fit`, or ``(a, b)`` / ``(a, b, min_clearance)`` tuples;
 - ``ORIENT``: ``{name: "-Z"}``, the face that goes on the bed;
 - ``QUANTITY``: ``{name: 2}``, copies to print;
-- ``BOUGHT``: a collection of part names that are bought, not printed.
+- ``BOUGHT``: a collection of part names that are bought, not printed;
+- ``DEVICES`` and ``WIRES``: the bought electronics and how they are wired; see
+  :mod:`cadsmith.electronics.wiring`.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pathlib import Path
 
 import cadquery as cq
 
+from cadsmith.electronics.wiring import Wiring, WiringError
 from cadsmith.model import Fit, Model, Part
 from cadsmith.printability import ORIENTATIONS
 
@@ -107,4 +110,11 @@ def load_model(path: str | Path) -> Model:
                           bought=str(name) in bought))
     if len(bought) == len(parts):
         raise ModelError("every part is BOUGHT, so there is nothing to print")
-    return Model(name=path.stem, parts=parts, fits=[_fit(item) for item in getattr(module, "FITS", [])])
+    wiring = None
+    if getattr(module, "DEVICES", None) or getattr(module, "WIRES", None):
+        try:
+            wiring = Wiring.from_spec(dict(getattr(module, "DEVICES", {})), list(getattr(module, "WIRES", [])))
+        except WiringError as error:
+            raise ModelError(f"WIRES: {error}") from None
+    return Model(name=path.stem, parts=parts, fits=[_fit(item) for item in getattr(module, "FITS", [])],
+                 wiring=wiring)
