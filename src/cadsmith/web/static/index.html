@@ -106,6 +106,20 @@ dialog{background:var(--panel);color:var(--text);border:1px solid var(--line2);b
 dialog h3{margin:0 0 6px;font-size:16px}dialog p{margin:0 0 12px;color:var(--soft)}
 dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);padding:0 12px;outline:0}dialog input:focus{border-color:var(--orange)}
 .derr{color:var(--bad);font-size:12px;min-height:18px;margin:7px 0 2px}.dfoot{display:flex;justify-content:flex-end;gap:8px}.btn.danger{background:#c9422f;border-color:#c9422f;color:#fff;font-weight:600}
+.elec{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;background:#0f141d}
+.elec .seg{display:flex;gap:2px;padding:2px;border-radius:9px;background:var(--btn);border:1px solid var(--line2)}
+.elec .seg button{height:28px;padding:0 12px;border-radius:7px;border:0;background:transparent;color:#9aa3b2;cursor:pointer;font-size:12px}
+.elec .seg button.on{background:var(--on);color:var(--onText);font-weight:600}
+.ebody{flex:1;min-height:0;overflow:auto;padding:16px 18px 28px}
+.ebody h4{margin:18px 0 8px;font-size:13px;font-weight:600}.ebody h4:first-child{margin-top:0}
+.eflag{font-size:12px;padding:7px 10px;border-radius:8px;margin:0 0 6px;white-space:pre-wrap;max-width:900px}.eflag.bad{background:var(--badBg);color:#ffc4b8;border:1px solid #5b2c22}.eflag.warn{background:var(--warnBg);color:var(--warn);border:1px solid #4a3320}.eflag.ok{background:var(--okBg);color:var(--ok);border:1px solid var(--okLine)}
+.wdiag{background:#11151d;border:1px solid var(--line2);border-radius:10px;padding:10px;overflow:auto}.wdiag svg{display:block;margin:0 auto;max-width:none}
+.ebody table{max-width:760px}.ebody td{padding:4px 6px}.ebody td.m{font-family:var(--mono);font-size:11.5px}
+.wsw{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle}
+.ftabs{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.ftabs button{height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--line2);background:var(--btn);color:var(--soft);font:11.5px var(--mono);cursor:pointer}.ftabs button.on{border-color:var(--orange);color:#fff}
+pre.code{margin:0;padding:12px 14px;background:#0b0e13;border:1px solid var(--line2);border-radius:10px;overflow:auto;font:12px/1.55 var(--mono);color:#d7dce5;max-height:62vh;tab-size:2}
+.steps{margin:6px 0 0;padding-left:20px;color:var(--soft);font-size:12.5px;line-height:1.7}.steps code{font:12px var(--mono);background:var(--btn);padding:1px 5px;border-radius:5px;color:var(--text)}
 [hidden]{display:none!important}
 @media (max-width:980px){body{overflow:auto;height:auto}.app{grid-template-columns:1fr}nav{flex-direction:row;justify-content:center;border-right:0;padding:6px}.view{height:55vh}aside{border-left:0;height:80vh}header{flex-wrap:wrap;height:auto;padding:8px;row-gap:6px}body{grid-template-rows:auto auto}}
 </style>
@@ -134,11 +148,13 @@ dialog input{width:100%;height:40px;border-radius:10px;border:1px solid var(--li
     <button class="hv on" data-page="3d"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>3D</button>
     <button class="hv" data-page="plates"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Plates</button>
     <button class="hv" data-page="drawing" id="navdrawing" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M13 20v-5h8M6 8h5M6 11h3M8.5 8v6" stroke-linecap="round"/></svg>Drawing</button>
+    <button class="hv" data-page="electric" id="navelectric" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>Electric</button>
   </nav>
   <main class="view" id="view">
     <div class="empty" id="empty"></div>
     <div class="plates" id="plates"></div>
     <div class="sheets" id="sheets" hidden><div class="sheetbar"><label for="sheetpick" hidden>Sheet</label><select id="sheetpick"></select><a class="btn hv" id="sheetopen" target="_blank" rel="noopener">Open SVG</a><span class="grow"></span><span class="hintx">scroll: zoom · drag: pan · double-click: fit</span></div><div class="paper" id="paper"><img id="sheetimg" alt="Technical drawing" draggable="false"></div></div>
+    <div class="elec" id="elec" hidden><div class="sheetbar"><div class="seg" role="tablist" aria-label="Electric"><button class="hv on" id="esw" role="tab">Wiring</button><button class="hv" id="efw" role="tab">Firmware</button></div><span class="grow"></span><span class="hintx" id="eboard"></span><a class="btn primary" id="fwzip" hidden>Download firmware</a></div><div class="ebody" id="ebody"></div></div>
     <div class="alert" id="alert" hidden></div>
     <div class="tools" id="tools" role="toolbar" aria-label="3D tools">
       <button class="hv" data-v="iso" title="Corner view">Iso</button>
@@ -294,12 +310,80 @@ function renderStats(r){const box=$("stats"),top=box.scrollTop;box.replaceChildr
  if(tab==="fit"){if(r.fits.length)box.append(table(["Pair","Gap","Needs",""],r.fits.map(f=>({cells:[`${f.a} / ${f.b}`,f.measured===null?"clear":f.measured.toFixed(2),f.required.toFixed(2),f.passed?"✓":"✕"]}))));else box.append(el("div","muted","One part, nothing to fit."))}
  if(tab==="plates"){if(r.plate_error)box.append(el("div","more bad",r.plate_error));box.append(table(["Plate","Parts"],r.plates.map(x=>({cells:[x.name,String(x.parts.length)]}))))}
  box.scrollTop=top}
-function renderPlates(r){const box=$("plates");box.replaceChildren();const NS="http://www.w3.org/2000/svg",W=r.bed.width,D=r.bed.depth;r.plates.forEach(pl=>{const wrap=el("div","plate");wrap.append(el("h5","",pl.name));const s=document.createElementNS(NS,"svg");s.setAttribute("viewBox",`-2 -2 ${W+4} ${D+4}`);s.setAttribute("width",320);s.setAttribute("height",320);
+function renderPlates(r){const box=$("plates");box.replaceChildren();const NS="http://www.w3.org/2000/svg",W=r.bed.width,D=r.bed.depth;r.plates.forEach(pl=>{const wrap=el("div","plate");wrap.append(el("h5","",pl.name));const s=document.createElementNS(NS,"svg");const L=W/16;s.setAttribute("viewBox",`-2 ${-L} ${W+4} ${D+2*L}`);s.setAttribute("width",320);s.setAttribute("height",320*(D+2*L)/(W+4));
  const rect=(x,y,w,h,f,st)=>{const e=document.createElementNS(NS,"rect");e.setAttribute("x",x);e.setAttribute("y",D-y-h);e.setAttribute("width",w);e.setAttribute("height",h);e.setAttribute("fill",f);e.setAttribute("stroke",st);e.setAttribute("rx",1);return e};
- s.append(rect(0,0,W,D,"#171c26","#3b4658"));pl.parts.forEach((p,i)=>{s.append(rect(p.x,p.y,p.width,p.depth,hex(i),"#0d1016"));if(p.width>W*.15){const t=document.createElementNS(NS,"text");t.setAttribute("x",p.x+p.width/2);t.setAttribute("y",D-p.y-p.depth/2+3);t.setAttribute("text-anchor","middle");t.setAttribute("font-size",W/28);t.setAttribute("fill","#0d1016");t.textContent=p.name;s.append(t)}});wrap.append(s);box.append(wrap)})}
+ const label=(t,y)=>{const e=document.createElementNS(NS,"text");e.setAttribute("x",W/2);e.setAttribute("y",y);e.setAttribute("text-anchor","middle");e.setAttribute("font-size",W/26);e.setAttribute("letter-spacing",W/120);e.setAttribute("fill","#7d8899");e.textContent=t;return e};
+ s.append(rect(0,0,W,D,"#171c26","#3b4658"),label("BACK",-L/3),label("FRONT",D+L*.8));(r.bed.exclude||[]).forEach(z=>{const e=rect(z[0],z[1],z[2]-z[0],z[3]-z[1],"#2a3140","#3b4658");e.setAttribute("stroke-dasharray","2 2");const t=document.createElementNS(NS,"title");t.textContent="the printer keeps this corner clear";e.append(t);s.append(e)});pl.parts.forEach((p,i)=>{s.append(rect(p.x,p.y,p.width,p.depth,hex(i),"#0d1016"));if(p.width>W*.15){const t=document.createElementNS(NS,"text");t.setAttribute("x",p.x+p.width/2);t.setAttribute("y",D-p.y-p.depth/2+3);t.setAttribute("text-anchor","middle");t.setAttribute("font-size",W/28);t.setAttribute("fill","#0d1016");t.textContent=p.name;s.append(t)}});wrap.append(s);box.append(wrap)})}
+let epage="wiring",efile=0;
+$("esw").onclick=()=>{epage="wiring";if(report)renderElectric(report)};$("efw").onclick=()=>{epage="firmware";if(report)renderElectric(report)};
+const WCOL=["#7fb0ff","#7ee2a0","#c6a2b8","#f0c674","#8fbdb2","#e4a0a0","#b8a6ff","#9dd3f0"],NETRANK={power:0,ground:1,signal:2};
+function netColor(n,i){return n.kind==="ground"?"#8a93a3":n.kind==="power"?((n.volts||5)<4?"#f6a766":"#ef5b5b"):WCOL[i%WCOL.length]}
+function netLabel(n){return n.kind==="ground"?"GND":n.kind==="power"?(n.volts?`${+n.volts.toFixed(1)} V`:"power"):"signal"}
+/* devices in three columns: power on the left, the board in the middle, modules on the right; only wired pins are listed */
+function wiringLayout(w){
+ const col={power:0,board:1,module:2},pins={};w.devices.forEach(d=>pins[d.name]=[]);
+ [...w.nets].sort((a,b)=>NETRANK[a.kind]-NETRANK[b.kind]).forEach(n=>n.pins.forEach(ref=>{const k=ref.indexOf("."),d=ref.slice(0,k),p=ref.slice(k+1);if(pins[d]&&!pins[d].includes(p))pins[d].push(p)}));
+ const CW=170,GAP=150,HEAD=26,ROW=20,VG=22,pos={},colY=[12,12,12];
+ w.devices.filter(d=>pins[d.name].length).forEach(d=>{const c=col[d.group]??2,h=HEAD+ROW*pins[d.name].length+6;pos[d.name]={x:12+c*(CW+GAP),y:colY[c],w:CW,h,c,d};colY[c]+=h+VG});
+ const H=Math.max(...colY);Object.values(pos).forEach(p=>p.y+=(H-colY[p.c])/2);
+ const at=ref=>{const k=ref.indexOf("."),p=pos[ref.slice(0,k)];return p?{p,y:p.y+HEAD+ROW*pins[p.d.name].indexOf(ref.slice(k+1))+ROW/2}:null};
+ return {pos,pins,at,W:24+3*CW+2*GAP+90,H:H+4,HEAD,ROW};
+}
+function wiringSvg(w){
+ const NS="http://www.w3.org/2000/svg",L=wiringLayout(w),s=document.createElementNS(NS,"svg");
+ s.setAttribute("viewBox",`0 0 ${L.W} ${L.H}`);s.setAttribute("width",L.W);s.setAttribute("height",L.H);s.setAttribute("role","img");s.setAttribute("aria-label","Wiring diagram");
+ const mk=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!==undefined)e.textContent=txt;return e};
+ const wires=[],wl=mk("g",{fill:"none","stroke-width":2.2,"stroke-linecap":"round"});
+ w.nets.forEach((n,i)=>{const pts=n.pins.map(r=>({r,a:L.at(r)})).filter(x=>x.a).sort((a,b)=>a.a.p.c-b.a.p.c||a.a.y-b.a.y);
+  for(let k=1;k<pts.length;k++){const A=pts[k-1],B=pts[k],ca=A.a.p.c,cb=B.a.p.c,same=ca===cb;
+   if(A.a.p===B.a.p)continue; /* two pins of one module on the same net are joined on its board: no wire */
+   const ax=cb<ca?A.a.p.x:A.a.p.x+A.a.p.w,bx=ca<cb?B.a.p.x:B.a.p.x+B.a.p.w;
+   const bend=same?40+10*(k%4):Math.max(40,Math.abs(bx-ax)/2.2),da=same||cb>ca?1:-1,db=same?1:-da;
+   const path=mk("path",{d:`M${ax} ${A.a.y}C${ax+da*bend} ${A.a.y} ${bx+db*bend} ${B.a.y} ${bx} ${B.a.y}`,stroke:netColor(n,i)});
+   if(n.kind==="ground")path.setAttribute("stroke-dasharray","5 4");path.append(mk("title",{},`${A.r} → ${B.r} (${netLabel(n)})`));wl.append(path);wires.push({a:A.r,b:B.r,n,i})}});
+ Object.values(L.pos).forEach(p=>{const g=mk("g",{});
+  g.append(mk("rect",{x:p.x,y:p.y,width:p.w,height:p.h,rx:8,fill:p.d.group==="board"?"#13261d":p.d.group==="power"?"#2a1a1a":"#171c26",stroke:"#3b4658"}));
+  g.append(mk("text",{x:p.x+10,y:p.y+17,fill:"#e6e9ef","font-size":12,"font-weight":600},p.d.name));
+  g.append(mk("text",{x:p.x+p.w-8,y:p.y+17,fill:"#8a93a3","font-size":10,"text-anchor":"end"},p.d.kind));
+  L.pins[p.d.name].forEach((pin,i)=>{const y=p.y+L.HEAD+L.ROW*i+L.ROW/2;g.append(mk("line",{x1:p.x+6,x2:p.x+p.w-6,y1:y-L.ROW/2,y2:y-L.ROW/2,stroke:"#232b38"}));
+   g.append(mk("text",{x:p.x+p.w/2,y:y+4,fill:"#b8bfcc","font-size":11,"font-family":"JetBrains Mono,monospace","text-anchor":"middle"},pin));
+   [p.x,p.x+p.w].forEach(cx=>g.append(mk("circle",{cx,cy:y,r:2.6,fill:"#5b6578"})))});
+  s.append(g)});
+ s.append(wl);return {svg:s,wires};
+}
+function etable(head,rows){const t=el("table"),hr=el("tr");head.forEach(h=>hr.append(el("th","",h)));t.append(hr);rows.forEach(cells=>{const tr=el("tr");cells.forEach(c=>tr.append(c instanceof Node?c:el("td","m",String(c))));t.append(tr)});return t}
+function renderElectric(r){
+ const w=r.wiring,fw=r.firmware;$("navelectric").hidden=false;
+ if(!w){$("efw").hidden=true;$("fwzip").hidden=true;$("eboard").textContent="";$("esw").classList.add("on");const box=$("ebody");box.replaceChildren();
+  const e=el("div","empty");e.style.position="static";e.style.paddingTop="80px";e.append("No electronics in this project yet.",el("small","","Tell the agent which board and modules you have, for example: \"ESP32 driving the 4 leg servos from a 2S 18650 pack\". It adds the wiring, checks it, and makes the firmware."));box.append(e);return}
+ if(!fw&&epage==="firmware")epage="wiring";
+ $("esw").classList.toggle("on",epage==="wiring");$("efw").classList.toggle("on",epage==="firmware");$("efw").hidden=!fw;
+ $("eboard").textContent=fw?fw.board:"";$("fwzip").hidden=!fw;if(fw){$("fwzip").href=`${BASE}/files/v${r.version}/${fw.zip}`;$("fwzip").download=`${(state.name||"project").replace(/[^\p{L}\p{N} _-]/gu,"")} firmware.zip`}
+ const box=$("ebody"),keep=box.scrollTop;box.replaceChildren();const h=t=>box.append(el("h4","",t));
+ if(epage==="wiring"){
+  h("Checks");if(!w.errors.length&&!w.warnings.length)box.append(el("div","eflag ok","Wiring checks out: pins, voltages and power budget."));
+  w.errors.forEach(e=>box.append(el("div","eflag bad",e)));w.warnings.forEach(e=>box.append(el("div","eflag warn",e)));
+  const {svg,wires}=wiringSvg(w);h("Wiring diagram");const d=el("div","wdiag");d.append(svg);box.append(d);
+  h(`Wires to connect (${wires.length})`);box.append(etable(["","From","To","Carries"],wires.map(x=>{const td=el("td"),c=el("span","wsw");c.style.background=netColor(x.n,x.i);td.append(c);return [td,x.a,x.b,el("td","",netLabel(x.n))]})));
+  if(w.pins.length){h("Board pins");box.append(etable(["Pin","Use","Goes to"],w.pins.map(p=>[p.pin,p.use,p.to.join(", ")])))}
+  if(w.power.length){h("Power, worst case (servos stalled)");box.append(etable(["Supply","Volts","Draw","Can give"],w.power.map(p=>{const dr=el("td","m",`${p.draw_ma} mA`);if(p.max_ma&&p.draw_ma>p.max_ma)dr.style.color="var(--bad)";return [p.supply,`${p.volts} V`,dr,p.max_ma?`${p.max_ma} mA`:"—"]})))}
+  const counts={};w.devices.forEach(d=>counts[d.title]=(counts[d.title]||0)+1);h("Shopping list");box.append(etable(["Qty","Item"],Object.entries(counts).map(([k,v])=>[`${v}×`,el("td","",k)])));
+ }else{
+  if(w.errors.length)box.append(el("div","eflag bad",`Fix the ${w.errors.length} wiring error${w.errors.length>1?"s":""} on the Wiring page before you power it up.`));
+  box.append(el("div","eflag "+(fw.custom?"ok":"warn"),fw.custom?"The project's own program (firmware/main.cpp).":"Starter program: it only tests the wiring. Tell the agent what the thing should do to get the real program."));
+  if(efile>=fw.files.length)efile=0;const tabs=el("div","ftabs");
+  fw.files.forEach((f,i)=>{const b=el("button",i===efile?"hv on":"hv",f.path);b.onclick=()=>{efile=i;renderElectric(r)};tabs.append(b)});
+  const copy=el("button","btn hv","Copy");copy.style.cssText="height:28px;margin-left:auto";copy.onclick=()=>navigator.clipboard?.writeText(fw.files[efile].text).then(()=>{copy.textContent="Copied";setTimeout(()=>copy.textContent="Copy",1200)});
+  tabs.append(copy);box.append(tabs,el("pre","code",fw.files[efile].text));
+  h("Flash it");const ol=el("ol","steps");
+  [["Install PlatformIO: the VS Code extension, or ",["pip install platformio"],"."],["Download firmware and unzip it."],["Plug the board in by USB and, in that folder, run ",["pio run -t upload"],"."],["Watch it start: ",["pio device monitor"],"."]]
+   .forEach(parts=>{const li=el("li");parts.forEach(x=>li.append(Array.isArray(x)?el("code","",x[0]):x));ol.append(li)});box.append(ol);
+ }
+ box.scrollTop=keep;
+}
 function renderHint(){$("hint").firstElementChild.textContent=ruling?"ruler: click two points · corners snap · esc: undo · M: ruler off":noting?"note: click the spot to change · N: note off":"drag: orbit · scroll: zoom · right-drag: pan · D: sizes · M: ruler · N: note";$("synced").replaceChildren(`View: ${viewName.toUpperCase()}`,...(report?[" · ",el("span","synced",`● synced v${report.version}`)]:[]))}
-function render(){if(!report)return;const r=report;$("download").href=`${BASE}/files/v${r.version}/plates.3mf`;$("download").download=`${(state.name||"project").replace(/[^\p{L}\p{N} _-]/gu,"")}.3mf`;$("source").href=`${BASE}/files/v${r.version}/model.py`;renderTabs(r);renderStats(r);renderPlates(r);renderSheets(r);renderHint()}
-function showPage(name){page=name;document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x.dataset.page===name));$("plates").style.display=name==="plates"?"flex":"none";$("sheets").hidden=name!=="drawing";if(name!=="3d")hoverDot.visible=false;applyChrome();renderer.domElement.style.visibility=name==="3d"?"visible":"hidden";if(name==="drawing")fitSheet()}
+function render(){if(!report)return;const r=report;$("download").href=`${BASE}/files/v${r.version}/plates.3mf`;$("download").download=`${(state.name||"project").replace(/[^\p{L}\p{N} _-]/gu,"")}.3mf`;$("source").href=`${BASE}/files/v${r.version}/model.py`;renderTabs(r);renderStats(r);renderPlates(r);renderSheets(r);renderElectric(r);renderHint()}
+function showPage(name){page=name;document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x.dataset.page===name));$("plates").style.display=name==="plates"?"flex":"none";$("sheets").hidden=name!=="drawing";$("elec").hidden=name!=="electric";if(name!=="3d")hoverDot.visible=false;applyChrome();renderer.domElement.style.visibility=name==="3d"?"visible":"hidden";if(name==="drawing")fitSheet()}
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 /* drawing sheets: scroll to zoom, drag to pan */
 let sheetZoom=1,sheetX=0,sheetY=0,sheetDrag=null,sheetKey="";const SHEET_RATIO=297/420;
